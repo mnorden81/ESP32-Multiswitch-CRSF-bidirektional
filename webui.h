@@ -36,6 +36,7 @@ extern char          g_wifi_ssid[33];
 extern char          g_wifi_pass[64];
 extern char          g_wifi_ip[16];
 extern char          g_device_name[24];   // NEU V1.4
+extern const uint16_t Version;            // Firmware-Version (z.B. 140 = v1.4)
 extern const char*   AP_IP_STR;
 extern uint8_t       wm_prop_value[8];   // NEU v0.14
 extern void          storageSave();
@@ -142,7 +143,7 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
 <header>
   <div>
     <h1>⚡ MultiSwitch</h1>
-    <div class="hv" id="hv">v0.26 · lädt…</div>
+    <div class="hv" id="hv">lädt…</div>
   </div>
   <div class="dot" id="dot"></div>
 </header>
@@ -329,7 +330,7 @@ async function fetchStatus(){
   state=d;
   const dot=$('dot');
   dot.className='dot '+(d.bus_ok?'ok':'err');
-  $('hv').textContent='v0.26 · '+d.rc_system_name+(d.bus_ok?' · Signal OK':' · Kein Signal');
+  $('hv').textContent=(d.version||'v?')+' · '+d.rc_system_name+(d.bus_ok?' · Signal OK':' · Kein Signal');
   renderTiles(d);
   if(curOut>=0) renderOutDetail(d,curOut);
   // Kanalwerte auf Startseite
@@ -677,6 +678,8 @@ static const char* rcName(int sys) {
 // ============================================================
 static void handleStatus() {
     String j = "{";
+    // Firmware-Version dynamisch aus Version-Konstante (z.B. 140 -> "v1.40")
+    j += "\"version\":\"v" + String(Version / 100) + "." + String(Version % 100 < 10 ? "0" : "") + String(Version % 100) + "\",";
     j += "\"bus_ok\":" + String(BUS_OK ? "true" : "false") + ",";
     j += "\"rc_system\":" + String(RC_System_boot) + ",";
     j += "\"rc_system_name\":\"" + String(rcName(RC_System_boot)) + "\",";

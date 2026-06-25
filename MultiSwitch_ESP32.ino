@@ -1,5 +1,5 @@
 /*
-   ESP32-MultiSwitch  v0.26
+   ESP32-MultiSwitch  v1.40
    Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
    CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
 
@@ -51,7 +51,7 @@
 #include "crsf_esp32.h"
 #include "blink_presets.h"
 
-static constexpr uint16_t Version = 26; // 0.26
+constexpr uint16_t Version = 140; // 1.40
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
