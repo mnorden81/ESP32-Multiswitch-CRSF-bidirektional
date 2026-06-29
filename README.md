@@ -1,15 +1,15 @@
-# ESP32-MultiSwitch v0.27
+# ESP32-MultiSwitch v1.41
 
 RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 
-## Änderungen v0.27
+## Änderungen v1.41
 
 - **CRSF Parser-Fix**: Doppelschreiben des CRC-Bytes im RX-Parser entfernt
 - **CRSF Init-Fix**: `init_crsf()` verwendet nun den übergebenen Serial-Port
 - **CRSF API-Fix**: `send_command()` korrekt als Klassenmethode implementiert
 - **Web-API robuster**: JSON-Strings werden sicher escaped, Eingaben werden valider geparst/validiert
 - **NVS-Schreibschutz**: Konfigurationsänderungen werden gebündelt gespeichert (Debounce), Flush vor Neustart
-- **Versionskonsistenz**: Firmware, Web-UI und README auf `v0.27` vereinheitlicht
+- **Versionskonsistenz**: Firmware, Web-UI und README auf `v1.41` vereinheitlicht
 
 ## Pin-Belegung
 
