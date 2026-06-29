@@ -180,23 +180,23 @@ Serial.printf("  ➤ Param Version    : %d\n", info.parameterVersionNumber);
 */
 }
 
-void CRSF::setDeviceInfoReplyPending(int newValue) {
+void CRSF::setDeviceInfoReplyPending(bool newValue) {
     deviceInfoReplyPending = newValue;
 }
 
-void CRSF::setDeviceEntryReplyPending(int newValue) {
+void CRSF::setDeviceEntryReplyPending(bool newValue) {
     deviceEntryReplyPending = newValue;
 }
 
-void CRSF::setDeviceReadReplyPending(int newValue) {
+void CRSF::setDeviceReadReplyPending(bool newValue) {
     deviceReadReplyPending = newValue;
 }
 
-void CRSF::setDeviceWriteReplyPending(int newValue) {
+void CRSF::setDeviceWriteReplyPending(bool newValue) {
     deviceWriteReplyPending = newValue;
 }
 
-void CRSF::setDeviceCommandReplyPending(int newValue) {
+void CRSF::setDeviceCommandReplyPending(bool newValue) {
     deviceCommandReplyPending = newValue;
 }
 
@@ -205,8 +205,8 @@ void CRSF::set_crsf_channel(uint8_t ch, uint16_t value) {
         channels[ch] = value;
 }
 
-void CRSF::init_crsf(HardwareSerial *serialPort, uint8_t rxPin = 16, uint8_t txPin = 17) {
-  serial_data = &Serial2;  // GPIO16=RX, GPIO17=TX ist UART2 auf ESP32
+void CRSF::init_crsf(HardwareSerial *serialPort, uint8_t rxPin, uint8_t txPin) {
+    serial_data = serialPort ? serialPort : &Serial2;
   serial_data->begin(BAUD_RATE, SERIAL_8N1, rxPin, txPin);
 #if DEBUG_CRSF
   Serial.println("Initializing CRSF...");
@@ -354,6 +354,10 @@ void CRSF::read_packets(uint8_t debug) {
 
         if (byte_index == 1) {
             length = data;
+            if (length < 2 || length > (CRSF_PACKET_SIZE - 2)) {
+                byte_index = 0;
+                continue;
+            }
             crfs_buffer[byte_index++] = data;
             continue;
         }
@@ -361,11 +365,10 @@ void CRSF::read_packets(uint8_t debug) {
         if (byte_index == length + 1) {
             crfs_buffer[byte_index++] = data;
             if (data == crc8(&crfs_buffer[2], length - 1)) {
-                crfs_buffer[byte_index++] = data;
                 crsfDataReceive();
                 if (debug) {
                     Serial.print("RX-Buffer: ");
-                    for (size_t i = 0; i < length; i++) {
+                    for (size_t i = 0; i < (size_t)(length + 2); i++) {
                         Serial.print(crfs_buffer[i], HEX); // Ausgabe in Hexadezimalformat
                         Serial.print(" ");
                     }
@@ -993,7 +996,7 @@ void CRSF::read_param(uint8_t parameter_number, uint8_t parameter_chunk_number){
 #endif     
 }
 
-void send_command(uint8_t command_id, std::initializer_list<uint8_t> payload) {   
+void CRSF::send_command(uint8_t command_id, std::initializer_list<uint8_t> payload) {
 
     uint8_t len_payload = payload.size();
 
@@ -1014,9 +1017,11 @@ void send_command(uint8_t command_id, std::initializer_list<uint8_t> payload) {
     }
     
     //packet[packet_count + len_name] = 0xFF;        // children Liste mit 0xFF abschließen
-    packet[5 + len_payload] = crc8_ba(&packet[2], packet[1] - 1);        // children Liste mit 0xFF abschließen ????
+    packet[5 + len_payload] = crc8_ba(&packet[2], packet[1] - 2);
     
     packet[packet[1]+1] = crc8(&packet[2], packet[1] - 1);
+
+    send_packets(packet, len + 2, 0);
 
 #if DEBUG_CRSF_SEND
     Serial.println("📤 Command send");

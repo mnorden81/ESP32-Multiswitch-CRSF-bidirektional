@@ -1,15 +1,15 @@
-# ESP32-MultiSwitch v0.14
+# ESP32-MultiSwitch v0.27
 
 RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 
-## Änderungen v0.14
+## Änderungen v0.27
 
-- **MWprop-Unterstützung**: Proportionale PWM-Steuerung über CRSF-MWprop-Kommandos.  
-  `pwm_wert[x] = 200..207` → Duty aus `wm_prop_value[channel]`
-- **CRSF-Timeout 2000 ms** (vorher 1000 ms) – robuster bei kurzen Unterbrechungen
-- **getPwmDuty()** Helfer-Funktion für saubere PWM-Quellenauflösung
-- **Debug-Tab** zeigt jetzt MWprop-Kanalwerte live
-- NVS-Speicherung konsequent bei allen Konfigurationsänderungen
+- **CRSF Parser-Fix**: Doppelschreiben des CRC-Bytes im RX-Parser entfernt
+- **CRSF Init-Fix**: `init_crsf()` verwendet nun den übergebenen Serial-Port
+- **CRSF API-Fix**: `send_command()` korrekt als Klassenmethode implementiert
+- **Web-API robuster**: JSON-Strings werden sicher escaped, Eingaben werden valider geparst/validiert
+- **NVS-Schreibschutz**: Konfigurationsänderungen werden gebündelt gespeichert (Debounce), Flush vor Neustart
+- **Versionskonsistenz**: Firmware, Web-UI und README auf `v0.27` vereinheitlicht
 
 ## Pin-Belegung
 
@@ -38,7 +38,7 @@ RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 
 ## Web-Interface
 
-IP: `192.168.4.1` (Standard)  
+IP: `192.168.1.1` (Standard)  
 SSID: `MultiSwitch` / Passwort: `123456789`
 
 ### API-Endpunkte

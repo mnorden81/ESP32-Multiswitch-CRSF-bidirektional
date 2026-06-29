@@ -1,5 +1,5 @@
 /*
-   ESP32-MultiSwitch  v1.40
+    ESP32-MultiSwitch  v1.41
    Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
    CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
 
@@ -51,7 +51,7 @@
 #include "crsf_esp32.h"
 #include "blink_presets.h"
 
-constexpr uint16_t Version = 140; // 1.40
+constexpr uint16_t Version = 141; // 1.41
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
@@ -133,8 +133,11 @@ char        g_device_name[24]   = "MultiSwitch";    // NEU V1.4: Geraetename im 
 
 // ======== NVS ===================================================
 static bool nvsDirty = false;
+static bool nvsSaveScheduled = false;
+static unsigned long nvsSaveDueMs = 0;
+static constexpr unsigned long NVS_SAVE_DEBOUNCE_MS = 500;
 
-static void nvsSave() {
+static void nvsWriteNow() {
     Preferences p;
     p.begin("msw", false);
     p.putInt("rc_sys",  RC_System);
@@ -154,7 +157,27 @@ static void nvsSave() {
     p.putString("dnam", g_device_name);   // NEU V1.4
     p.end();
     nvsDirty = false;
+    nvsSaveScheduled = false;
     Serial.println("NVS gespeichert.");
+}
+
+static void nvsSave() {
+    nvsDirty = true;
+    nvsSaveScheduled = true;
+    nvsSaveDueMs = millis() + NVS_SAVE_DEBOUNCE_MS;
+}
+
+static void nvsFlushPending() {
+    if (nvsDirty || nvsSaveScheduled) {
+        nvsWriteNow();
+    }
+}
+
+static void nvsProcessPending() {
+    if (!nvsSaveScheduled) return;
+    if ((long)(millis() - nvsSaveDueMs) >= 0) {
+        nvsWriteNow();
+    }
 }
 
 static void nvsLoad() {
@@ -183,6 +206,8 @@ static void nvsLoad() {
     strncpy(g_wifi_ip,      ip.c_str(),   sizeof(g_wifi_ip)-1);
     strncpy(g_device_name,  dnam.c_str(), sizeof(g_device_name)-1);
     p.end();
+    nvsDirty = false;
+    nvsSaveScheduled = false;
     Serial.println("NVS geladen.");
 }
 
@@ -197,9 +222,10 @@ static void nvsReset() {
     strncpy(g_wifi_ip,     "192.168.1.1", sizeof(g_wifi_ip)-1);
     strncpy(g_device_name, "MultiSwitch", sizeof(g_device_name)-1);  // NEU V1.4
     nvsSave();
+    nvsFlushPending();
 }
 
-void storageSave() { nvsSave(); }
+void storageSave() { nvsFlushPending(); }
 
 // ======== Status-LED ============================================
 static unsigned long ledPrevMs = 0;
@@ -372,7 +398,7 @@ static void crsfSendParam(uint8_t idx) {
         crsf.send_param_response_CRSF_FOLDER(0, 0, "",
             {1,2,5,14,23,32,41,50,59,68});
     } else if (idx == 1) {
-        crsf.send_param_response_CRSF_INFO(1, 0, "Version", "v0.26 ESP32");
+        crsf.send_param_response_CRSF_INFO(1, 0, "Version", "v1.41 ESP32");
     } else if (idx == 2) {
         crsf.send_param_response_CRSF_FOLDER(2, 0, "Global", {3,4});
     } else if (idx == 3) {
@@ -621,13 +647,15 @@ void setup() {
 
     webui_init();
 
-    Serial.printf("MultiSwitch ESP32 v0.%02d\n", Version);
+    Serial.printf("MultiSwitch ESP32 v%d.%02d\n", Version / 100, Version % 100);
     Serial.printf("SSID: %s\n", g_wifi_ssid);
     Serial.printf("IP:   %s\n", AP_IP_STR);
 }
 
 // ======== Loop ==================================================
 void loop() {
+
+    nvsProcessPending();
 
     if (RC_System_boot == 4) {
         crsf.read_packets(0);

@@ -64,11 +64,11 @@ public:
     uint8_t getParamReadSource() const { return paramReadSource; }
     void addTxEcho(uint16_t n) { txEchoBytes += n; }
 
-    void setDeviceInfoReplyPending(int newValue);
-    void setDeviceEntryReplyPending(int newValue);
-    void setDeviceReadReplyPending(int newValue);
-    void setDeviceWriteReplyPending(int newValue);
-    void setDeviceCommandReplyPending(int newValue);
+    void setDeviceInfoReplyPending(bool newValue);
+    void setDeviceEntryReplyPending(bool newValue);
+    void setDeviceReadReplyPending(bool newValue);
+    void setDeviceWriteReplyPending(bool newValue);
+    void setDeviceCommandReplyPending(bool newValue);
 
     void set_crsf_channel(uint8_t ch, uint16_t value);
 

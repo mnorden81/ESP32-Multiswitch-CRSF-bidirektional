@@ -1,15 +1,11 @@
 /*
- * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch  v0.14
- *
- * ÄNDERUNGEN v0.14:
- *   - nvsDirty korrekt gesetzt bei allen config-ändernden API-Aufrufen.
- *   - /api/status liefert jetzt auch wm_prop_value[] (MWprop-Kanalwerte).
- *   - Kleiner Sicherheits-Fix: JSON-Strings werden mit strnlen begrenzt.
- *   - PROGMEM-HTML unverändert (war bereits gut).
+ * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch  v0.27
  */
 
 #pragma once
 
+#include <ctype.h>
+#include <stdlib.h>
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -659,6 +655,95 @@ static void sendJson(const String& json) {
 static void sendOk()  { sendJson("{\"ok\":true}"); }
 static void send404() { webServer.send(404,"application/json","{\"error\":\"not found\"}"); }
 
+static String jsonEscape(const char* s) {
+  String out;
+  if (!s) return out;
+  while (*s) {
+    switch (*s) {
+      case '\\': out += "\\\\"; break;
+      case '"':  out += "\\\""; break;
+      case '\b': out += "\\b"; break;
+      case '\f': out += "\\f"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default: out += *s; break;
+    }
+    s++;
+  }
+  return out;
+}
+
+static bool jsonExtractInt(const String& body, const char* key, int& out) {
+  String token = "\"" + String(key) + "\"";
+  int p = body.indexOf(token);
+  if (p < 0) return false;
+  p = body.indexOf(':', p + token.length());
+  if (p < 0) return false;
+  p++;
+  while (p < (int)body.length() && isspace((unsigned char)body[p])) p++;
+  char* endPtr = nullptr;
+  long v = strtol(body.c_str() + p, &endPtr, 10);
+  if (endPtr == body.c_str() + p) return false;
+  out = (int)v;
+  return true;
+}
+
+static bool jsonExtractBool(const String& body, const char* key, bool& out) {
+  String token = "\"" + String(key) + "\"";
+  int p = body.indexOf(token);
+  if (p < 0) return false;
+  p = body.indexOf(':', p + token.length());
+  if (p < 0) return false;
+  p++;
+  while (p < (int)body.length() && isspace((unsigned char)body[p])) p++;
+  if (body.startsWith("true", p)) {
+    out = true;
+    return true;
+  }
+  if (body.startsWith("false", p)) {
+    out = false;
+    return true;
+  }
+  return false;
+}
+
+static bool jsonExtractString(const String& body, const char* key, String& out) {
+  String token = "\"" + String(key) + "\"";
+  int p = body.indexOf(token);
+  if (p < 0) return false;
+  p = body.indexOf(':', p + token.length());
+  if (p < 0) return false;
+  p++;
+  while (p < (int)body.length() && isspace((unsigned char)body[p])) p++;
+  if (p >= (int)body.length() || body[p] != '"') return false;
+  p++;
+  out = "";
+  bool esc = false;
+  while (p < (int)body.length()) {
+    char c = body[p++];
+    if (esc) {
+      switch (c) {
+        case '"': out += '"'; break;
+        case '\\': out += '\\'; break;
+        case '/': out += '/'; break;
+        case 'b': out += '\b'; break;
+        case 'f': out += '\f'; break;
+        case 'n': out += '\n'; break;
+        case 'r': out += '\r'; break;
+        case 't': out += '\t'; break;
+        default: out += c; break;
+      }
+      esc = false;
+      continue;
+    }
+    if (c == '\\') { esc = true; continue; }
+    if (c == '"') return true;
+    out += c;
+  }
+  return false;
+}
+
 // ============================================================
 //  RC-System-Name
 // ============================================================
@@ -682,7 +767,7 @@ static void handleStatus() {
     j += "\"version\":\"v" + String(Version / 100) + "." + String(Version % 100 < 10 ? "0" : "") + String(Version % 100) + "\",";
     j += "\"bus_ok\":" + String(BUS_OK ? "true" : "false") + ",";
     j += "\"rc_system\":" + String(RC_System_boot) + ",";
-    j += "\"rc_system_name\":\"" + String(rcName(RC_System_boot)) + "\",";
+  j += "\"rc_system_name\":\"" + jsonEscape(rcName(RC_System_boot)) + "\",";
         j += "\"rc_system_boot\":" + String(RC_System_boot) + ",";
 
     // Einkanal
@@ -694,7 +779,7 @@ static void handleStatus() {
     for (int i = 0; i < 8; i++) {
         if (i) j += ",";
         j += "{";
-        j += "\"name\":\"" + String(Ausgang_Name[i]) + "\",";
+        j += "\"name\":\"" + jsonEscape(Ausgang_Name[i]) + "\",";
         j += "\"on\":"    + String(Ausgang[i] ? "true" : "false") + ",";
         j += "\"override\":" + String(g_manual_override[i] ? "true" : "false") + ",";
         j += "\"kanal\":" + String(Ausgang_Kanal[i]) + ",";
@@ -730,10 +815,10 @@ static void handleConfig() {
         j += "\"crsf_channel\":"  + String(CRSF_Channel)   + ",";
         j += "\"einkanal_mode\":" + String(einkanal_mode)  + ",";
         j += "\"modul_adress\":"  + String(modul_adress)   + ",";
-        j += "\"dnam\":\""        + String(g_device_name)  + "\",";
-        j += "\"ssid\":\""        + String(g_wifi_ssid)    + "\",";
-        j += "\"pass\":\""        + String(g_wifi_pass)    + "\",";
-        j += "\"ip\":\""          + String(g_wifi_ip)      + "\"";
+      j += "\"dnam\":\""        + jsonEscape(g_device_name)  + "\",";
+      j += "\"ssid\":\""        + jsonEscape(g_wifi_ssid)    + "\",";
+      j += "\"pass\":\""        + jsonEscape(g_wifi_pass)    + "\",";
+      j += "\"ip\":\""          + jsonEscape(g_wifi_ip)      + "\"";
         j += "}";
         sendJson(j);
         return;
@@ -743,35 +828,61 @@ static void handleConfig() {
     String body = webServer.arg("plain");
     bool changed = false;
 
-    // Einfaches manuelles JSON-Parsing (kein ArduinoJson nötig)
-    auto getInt = [&](const char* key, int& out) {
-        String k = "\"" + String(key) + "\":";
-        int pos = body.indexOf(k);
-        if (pos < 0) return;
-        out = body.substring(pos + k.length()).toInt();
-        changed = true;
-    };
-    auto getStr = [&](const char* key, char* out, size_t maxlen) {
-        String k = "\"" + String(key) + "\":\"";
-        int pos = body.indexOf(k);
-        if (pos < 0) return;
-        int start = pos + k.length();
-        int end   = body.indexOf('"', start);
-        if (end < 0) return;
-        String val = body.substring(start, end);
-        strncpy(out, val.c_str(), maxlen - 1);
-        out[maxlen - 1] = '\0';
-        changed = true;
-    };
+    int v = 0;
+    if (jsonExtractInt(body, "rc_system", v)) {
+      v = constrain(v, 0, 4);
+      if (v != RC_System) { RC_System = v; changed = true; }
+    }
+    if (jsonExtractInt(body, "crsf_channel", v)) {
+      if ((v >= 0 && v <= 15) || v == 999) {
+        if (v != CRSF_Channel) { CRSF_Channel = v; changed = true; }
+      }
+    }
+    if (jsonExtractInt(body, "einkanal_mode", v)) {
+      bool valid = (v == 0 || v == 999 || (v >= 10 && v <= 13));
+      if (valid && v != einkanal_mode) { einkanal_mode = v; changed = true; }
+    }
+    if (jsonExtractInt(body, "modul_adress", v)) {
+      v = constrain(v, 0, 20);
+      if (v != modul_adress) { modul_adress = v; changed = true; }
+    }
 
-    getInt("rc_system",     RC_System);
-    getInt("crsf_channel",  CRSF_Channel);
-    getInt("einkanal_mode", einkanal_mode);
-    getInt("modul_adress",  modul_adress);
-    getStr("dnam", g_device_name, sizeof(g_device_name));  // NEU V1.4
-    getStr("ssid", g_wifi_ssid,   sizeof(g_wifi_ssid));
-    getStr("pass", g_wifi_pass,   sizeof(g_wifi_pass));
-    getStr("ip",   g_wifi_ip,     sizeof(g_wifi_ip));
+    String s;
+    if (jsonExtractString(body, "dnam", s)) {
+      s = s.substring(0, sizeof(g_device_name) - 1);
+      if (strncmp(g_device_name, s.c_str(), sizeof(g_device_name) - 1) != 0) {
+        strncpy(g_device_name, s.c_str(), sizeof(g_device_name) - 1);
+        g_device_name[sizeof(g_device_name) - 1] = '\0';
+        changed = true;
+      }
+    }
+    if (jsonExtractString(body, "ssid", s)) {
+      s = s.substring(0, sizeof(g_wifi_ssid) - 1);
+      if (strncmp(g_wifi_ssid, s.c_str(), sizeof(g_wifi_ssid) - 1) != 0) {
+        strncpy(g_wifi_ssid, s.c_str(), sizeof(g_wifi_ssid) - 1);
+        g_wifi_ssid[sizeof(g_wifi_ssid) - 1] = '\0';
+        changed = true;
+      }
+    }
+    if (jsonExtractString(body, "pass", s)) {
+      s = s.substring(0, sizeof(g_wifi_pass) - 1);
+      if (strncmp(g_wifi_pass, s.c_str(), sizeof(g_wifi_pass) - 1) != 0) {
+        strncpy(g_wifi_pass, s.c_str(), sizeof(g_wifi_pass) - 1);
+        g_wifi_pass[sizeof(g_wifi_pass) - 1] = '\0';
+        changed = true;
+      }
+    }
+    if (jsonExtractString(body, "ip", s)) {
+      IPAddress ip;
+      if (ip.fromString(s)) {
+        s = s.substring(0, sizeof(g_wifi_ip) - 1);
+        if (strncmp(g_wifi_ip, s.c_str(), sizeof(g_wifi_ip) - 1) != 0) {
+          strncpy(g_wifi_ip, s.c_str(), sizeof(g_wifi_ip) - 1);
+          g_wifi_ip[sizeof(g_wifi_ip) - 1] = '\0';
+          changed = true;
+        }
+      }
+    }
 
     if (changed) nvsSave();
     sendOk();
@@ -787,18 +898,19 @@ static void handleSwitch() {
 
     // ch
     int ch = -1;
-    int pos = body.indexOf("\"ch\":");
-    if (pos >= 0) ch = body.substring(pos + 5).toInt();
+    jsonExtractInt(body, "ch", ch);
     if (ch < 0 || ch > 7) { send404(); return; }
 
     // release
-    if (body.indexOf("\"release\":true") >= 0) {
+    bool release = false;
+    if (jsonExtractBool(body, "release", release) && release) {
         g_manual_override[ch] = false;
         sendOk(); return;
     }
 
     // on/off
-    bool on = (body.indexOf("\"on\":true") >= 0);
+    bool on = false;
+    if (!jsonExtractBool(body, "on", on)) { send404(); return; }
     g_manual_override[ch] = true;
     g_manual_state[ch]    = on;
     sendOk();
@@ -812,38 +924,44 @@ static void handleOutput() {
     if (!webServer.hasArg("plain")) { send404(); return; }
     String body = webServer.arg("plain");
     int ch = -1;
-    { int p = body.indexOf("\"ch\":"); if (p>=0) ch=body.substring(p+5).toInt(); }
+    jsonExtractInt(body, "ch", ch);
     if (ch < 0 || ch > 7) { send404(); return; }
     bool changed = false;
-    auto getField = [&](const char* key, int& out) {
-        String k = "\"" + String(key) + "\":";
-        int p = body.indexOf(k);
-        if (p < 0) return;
-        out = body.substring(p + k.length()).toInt();
+    int val = 0;
+    if (jsonExtractInt(body, "kanal", val)) {
+      if (val >= 0 && val <= 55 && val != Ausgang_Kanal[ch]) {
+        Ausgang_Kanal[ch] = val;
         changed = true;
-    };
-    getField("kanal", Ausgang_Kanal[ch]);
+      }
+    }
     int pwm_old = pwm_wert[ch];
-    getField("pwm",   pwm_wert[ch]);
+    if (jsonExtractInt(body, "pwm", val)) {
+      bool validPwm = (val >= 0 && val <= 255) || (val >= 300 && val <= 315);
+      if (validPwm && val != pwm_wert[ch]) {
+        pwm_wert[ch] = val;
+        changed = true;
+      }
+    }
     // MWprop aktiviert -> Ausgang automatisch einschalten
     if (pwm_wert[ch] >= 200 && pwm_wert[ch] <= 207 &&
         !(pwm_old >= 200 && pwm_old <= 207)) {
         einkanal_Data |= (1 << ch);
     }
-    getField("mode",  mode[ch]);
-    {
-        String k = "\"name\":\"";
-        int p = body.indexOf(k);
-        if (p >= 0) {
-            int s = p + k.length();
-            int e = body.indexOf('"', s);
-            if (e > s) {
-                String nm = body.substring(s, e);
-                strncpy(Ausgang_Name[ch], nm.c_str(), 16);
-                Ausgang_Name[ch][16] = '\0';
-                changed = true;
-            }
-        }
+    if (jsonExtractInt(body, "mode", val)) {
+      val = constrain(val, 0, 0xFFFF);
+      if (val != mode[ch]) {
+        mode[ch] = val;
+        changed = true;
+      }
+    }
+    String nm;
+    if (jsonExtractString(body, "name", nm)) {
+      nm = nm.substring(0, 16);
+      if (strncmp(Ausgang_Name[ch], nm.c_str(), 16) != 0) {
+        strncpy(Ausgang_Name[ch], nm.c_str(), 16);
+        Ausgang_Name[ch][16] = '\0';
+        changed = true;
+      }
     }
     if (changed) nvsSave();
     sendOk();
@@ -853,6 +971,7 @@ static void handleOutput() {
 //  API: /api/restart
 // ============================================================
 static void handleRestart() {
+  storageSave();
     sendOk();
     delay(200);
     ESP.restart();
