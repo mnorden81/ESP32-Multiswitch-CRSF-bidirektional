@@ -1,5 +1,5 @@
 /*
-    ESP32-MultiSwitch  v1.41
+    ESP32-MultiSwitch  v1.42
    Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
    CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
 
@@ -51,7 +51,7 @@
 #include "crsf_esp32.h"
 #include "blink_presets.h"
 
-constexpr uint16_t Version = 141; // 1.41
+constexpr uint16_t Version = 142; // 1.42
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
@@ -365,6 +365,13 @@ static void einkanalFunctionSBUS(uint16_t channel) {
 
 static constexpr uint8_t CRSF_PARAM_COUNT = 76;
 
+// ── CRSF-Geraeteadresse + Ping-Slot aus der WM-Adresse (uebernommen aus Soundmodul v1.24) ──
+// Adresse = 0xC0 + modul_adress; Slot = (Adresse-0xC0)*2; Antwort erst im eigenen
+// Zeit-Slot, damit sich die Geraeteantworten mehrerer Module nicht ueberlappen.
+#define CRSF_SLOT_MS 5
+static inline uint8_t  crsfAddrFromWM()  { return 0xC0 + (uint8_t)constrain(modul_adress, 0, 15); }
+static inline uint16_t crsfSlotDelayMs() { return (uint16_t)((uint8_t)constrain(modul_adress, 0, 15) * 2) * CRSF_SLOT_MS; }
+
 // Ausgang_Kanal[x] -> Quelle (0=Einzelkanal,1=Kanal_L,2=Kanal_H) + Kanalnummer (1-basiert)
 static uint8_t getKanalQuelle(int x) {
     int k = Ausgang_Kanal[x];
@@ -398,7 +405,7 @@ static void crsfSendParam(uint8_t idx) {
         crsf.send_param_response_CRSF_FOLDER(0, 0, "",
             {1,2,5,14,23,32,41,50,59,68});
     } else if (idx == 1) {
-        crsf.send_param_response_CRSF_INFO(1, 0, "Version", "v1.41 ESP32");
+        crsf.send_param_response_CRSF_INFO(1, 0, "Version", "v1.42 ESP32");
     } else if (idx == 2) {
         crsf.send_param_response_CRSF_FOLDER(2, 0, "Global", {3,4});
     } else if (idx == 3) {
@@ -479,7 +486,7 @@ static void crsfSendParam(uint8_t idx) {
 static void crsfWriteParam(uint8_t idx, uint8_t val) {
     const bool isCrsf = (RC_System_boot == 4);
     if (idx == 3) {
-        modul_adress = val; nvsSave();
+        modul_adress = val; crsf.setDeviceAddress(crsfAddrFromWM()); nvsSave();
     } else if (idx == 4) {
         CRSF_Channel = val; nvsSave();
     } else if (idx >= 5 && idx <= 76) {
@@ -630,7 +637,9 @@ void setup() {
 
     if (RC_System_boot == 4) {
         crsf.init_crsf(&Serial2, 16, 17); // Serial2 fuer CRSF (GPIO16=RX, 17=TX)
-        Serial.println("CRSF gestartet (RX=16, TX=17, 420000 Bd)");
+        crsf.setDeviceAddress(crsfAddrFromWM());   // eindeutige CRSF-Adresse aus WM-Adresse
+        Serial.printf("CRSF gestartet (RX=16, TX=17, 420000 Bd)  Geraeteadresse 0x%02X  Slot %d\n",
+                      crsfAddrFromWM(), (uint8_t)constrain(modul_adress,0,15)*2);
     } else {
         sbus_rx.Begin();
         Serial.printf("SBUS gestartet (RX=16, RC-System=%d)\n", RC_System_boot);
@@ -677,7 +686,7 @@ void loop() {
         // fuer SBUS-WM-Dekodierung und wuerden einkanal_Data verfaelschen.
         // (Fehler in V1.1: ELSE-Zweig lief auch bei CRSF -> falsches Schalten)
         // ELRS LUA Script: Device Info Antwort auf DEVICE_PING
-        if (crsf.getDeviceInfoReplyPending()) {
+        if (crsf.getDeviceInfoReplyPending() && (millis() - crsf.getPingTime() >= crsfSlotDelayMs())) {
             crsf.setDeviceInfoReplyPending(false);
             char devName[24];
             snprintf(devName, sizeof(devName), "%s@%d", g_device_name, modul_adress);  // NEU V1.4

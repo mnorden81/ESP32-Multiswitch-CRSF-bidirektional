@@ -1,5 +1,5 @@
 /*
- * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch  v1.41
+ * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch  v1.42
  */
 
 #pragma once
