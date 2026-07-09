@@ -310,6 +310,7 @@ void CRSF::crsfDataReceive() {
 
         case CRSF_FRAMETYPE_COMMAND:
             deviceCommandReplyPending = true;
+            memcpy(cmdBuffer, crfs_buffer, CRSF_PACKET_SIZE); // Kommando sofort sichern (gegen Ueberschreiben)
 #if DEBUG_CRSF_TYPE 
             Serial.println("📤 CRSF_FRAMETYPE_COMMAND");
 #endif             

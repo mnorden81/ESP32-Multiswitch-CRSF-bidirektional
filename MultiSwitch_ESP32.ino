@@ -262,43 +262,43 @@ static uint8_t compressSwitches(uint16_t state) {
 }
 
 static void einkanalFunctionCRSF() {
-    uint8_t WMcode  = crsf.get_crfs_buffer(5);
-    uint8_t command = crsf.get_crfs_buffer(6);
+    uint8_t WMcode  = crsf.get_cmd_buffer(5);
+    uint8_t command = crsf.get_cmd_buffer(6);
     if (WMcode != Multiswitch) return;
     switch (command) {
         case MWset4: {
-            uint8_t address = crsf.get_crfs_buffer(7);
+            uint8_t address = crsf.get_cmd_buffer(7);
             if (address == (uint8_t)modul_adress) {
-                uint16_t state = ((uint16_t)crsf.get_crfs_buffer(8) << 8)
-                               |             crsf.get_crfs_buffer(9);
+                uint16_t state = ((uint16_t)crsf.get_cmd_buffer(8) << 8)
+                               |             crsf.get_cmd_buffer(9);
                 einkanal_Data = compressSwitches(state);
             }
             break;
         }
         case MWset4m: {
-            uint8_t count = min((uint8_t)crsf.get_crfs_buffer(7), (uint8_t)7);
+            uint8_t count = min((uint8_t)crsf.get_cmd_buffer(7), (uint8_t)7);
             for (uint8_t i = 0; i < count; i++) {
-                uint8_t address = crsf.get_crfs_buffer(8 + (3 * i));
+                uint8_t address = crsf.get_cmd_buffer(8 + (3 * i));
                 if (address == (uint8_t)modul_adress) {
-                    uint16_t state = ((uint16_t)crsf.get_crfs_buffer(9  + (3*i)) << 8)
-                                   |             crsf.get_crfs_buffer(10 + (3*i));
+                    uint16_t state = ((uint16_t)crsf.get_cmd_buffer(9  + (3*i)) << 8)
+                                   |             crsf.get_cmd_buffer(10 + (3*i));
                     einkanal_Data = compressSwitches(state);
                 }
             }
             break;
         }
         case MWset: {
-            uint8_t address = crsf.get_crfs_buffer(7);
+            uint8_t address = crsf.get_cmd_buffer(7);
             if (address == (uint8_t)modul_adress)
-                einkanal_Data = crsf.get_crfs_buffer(8);
+                einkanal_Data = crsf.get_cmd_buffer(8);
             break;
         }
         // NEU v0.14: MWprop – setzt duty-Wert für proportionale PWM-Ausgänge
         case MWprop: {
-            uint8_t address = crsf.get_crfs_buffer(7);
+            uint8_t address = crsf.get_cmd_buffer(7);
             if (address == (uint8_t)modul_adress) {
-                uint8_t channel = crsf.get_crfs_buffer(8);
-                uint8_t duty    = crsf.get_crfs_buffer(9); // 0-100%
+                uint8_t channel = crsf.get_cmd_buffer(8);
+                uint8_t duty    = crsf.get_cmd_buffer(9); // 0-100%
                 if (channel < 8) {
                     // MWprop sendet Prozent (0-100), PWM braucht 0-255
                     wm_prop_value[channel] = (uint8_t)((uint16_t)duty * 255 / 100);

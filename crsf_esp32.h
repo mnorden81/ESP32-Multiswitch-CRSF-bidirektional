@@ -51,6 +51,8 @@ public:
 
     uint16_t get_crfs_channels(uint8_t ch) const { return channels[ch]; }
     uint8_t get_crfs_buffer(uint8_t ch) const { return crfs_buffer[ch]; }
+    // Separater Puffer fuer MWSET-Kommandos: beim Empfang gesichert (gegen Ueberschreiben durch Folge-Frames)
+    uint8_t get_cmd_buffer(uint8_t ch) const { return cmdBuffer[ch]; }
 
     bool getDeviceInfoReplyPending() const { return deviceInfoReplyPending; }
     bool getDeviceEntryReplyPending() const { return deviceEntryReplyPending; }
@@ -90,6 +92,7 @@ private:
     bool deviceCommandReplyPending;
 
     uint8_t crfs_buffer[CRSF_PACKET_SIZE];
+    uint8_t cmdBuffer[CRSF_PACKET_SIZE] = {0}; // gesicherte Kopie des letzten MWSET-Kommandos
     uint8_t pingSource    = 0xEA;  // Source des letzten DEVICE_PING
     uint16_t txEchoBytes  = 0;     // Gesendete Bytes zum Ueberspringen (Echo-Filter)
     uint8_t paramReadIndex  = 0;   // Angefragter Parameter-Index
