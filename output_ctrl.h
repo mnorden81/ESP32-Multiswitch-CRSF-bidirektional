@@ -13,6 +13,18 @@
  *   - Blinken (konfigurierbare An/Aus-Zeit + Blitzanzahl)
  *   - Morse-Code ausgeben
  *   - Muster abspielen (Sequenz-Pattern)
+ *
+ * ══════════════════════════════════════════════════════════════════════
+ *  HINWEIS (v2.00): NICHT VERWENDET / ARCHIV
+ *  Diese Datei wird von MultiSwitch_ESP32.ino nicht eingebunden (kein
+ *  #include "output_ctrl.h" dort) - Rest eines nicht gemergten Refactoring-
+ *  Versuchs Richtung objektorientierter HAL-Architektur (zusammen mit
+ *  eeprom_esp32.h und hal_esp32.h). Die tatsächlich aktive Ausgangs-
+ *  steuerung (Blinken/PWM/MWprop) steht in Output()/getPwmDuty() direkt in
+ *  MultiSwitch_ESP32.ino und kennt weder Morse-Code noch Pattern-Sequenzen.
+ *  Vor einer Weiterverwendung dieser Datei erst prüfen, ob sie noch zum
+ *  aktuellen Stand passt.
+ * ══════════════════════════════════════════════════════════════════════
  */
 
 #pragma once

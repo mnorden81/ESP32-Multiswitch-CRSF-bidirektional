@@ -4,6 +4,18 @@
  *
  * Identisch zur originalen eeprom.h, aber ohne STM32-spezifische Includes.
  * Persistenz erfolgt über NVS (Preferences), siehe hal_esp32.h → NVS::save/load
+ *
+ * ══════════════════════════════════════════════════════════════════════
+ *  HINWEIS (v2.00): NICHT VERWENDET / ARCHIV
+ *  Diese Datei wird von MultiSwitch_ESP32.ino nicht eingebunden (kein
+ *  #include "eeprom_esp32.h" dort) - Rest eines nicht gemergten
+ *  Refactoring-Versuchs Richtung objektorientierter HAL-Architektur
+ *  (zusammen mit hal_esp32.h und output_ctrl.h). Die tatsächlich aktive
+ *  Konfigurationsstruktur (globale Arrays wie Ausgang_Kanal[]/pwm_wert[]/
+ *  mode[]/Ausgang_Name[] + NVS-Zugriff über nvsLoad()/nvsSave()) steht
+ *  direkt in MultiSwitch_ESP32.ino. Vor einer Weiterverwendung dieser
+ *  Datei erst prüfen, ob sie noch zum aktuellen Stand passt.
+ * ══════════════════════════════════════════════════════════════════════
  */
 
 #pragma once

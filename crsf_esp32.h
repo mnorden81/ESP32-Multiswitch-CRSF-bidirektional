@@ -78,6 +78,17 @@ public:
 
     void set_crsf_channel(uint8_t ch, uint16_t value);
 
+    // ── Diagnose-Zaehler (immer aktiv) ──────────────────────────────────
+    // v2.00, uebernommen aus Soundmodul-Projekt: macht "geht nicht" auf der
+    // Debug-Seite direkt sichtbar (kommen ueberhaupt Bytes an? gueltige
+    // Frames? CRC-Fehler? wird ueberhaupt gepingt?), ohne Seriell-Monitor.
+    uint32_t getRawBytesRx()  const { return rawBytesRx; }
+    uint32_t getValidFrames() const { return validFramesRx; }
+    uint32_t getCrcErrors()   const { return crcErrorsRx; }
+    uint32_t getDevicePings() const { return devicePingsRx; }
+    uint32_t getParamReads()  const { return paramReadsRx; }
+    uint32_t getParamWrites() const { return paramWritesRx; }
+
 private:
     void updateChannels();
     void updateLink_Statistics();
@@ -102,6 +113,14 @@ private:
     uint8_t deviceAddress = CRSF_ADDRESS_FLIGHT_CONTROLLER; // eigene CRSF-Adresse (0xC0..0xCF aus WM-Adresse; Default 0xC8)
     unsigned long pingReceivedTime = 0; // Zeitpunkt des letzten Broadcast-Ping (fuer Slot-Delay)
     uint16_t channels[CRSF_MAX_CHANNELS];
+
+    // Diagnose-Zaehler (siehe Getter oben) - v2.00
+    uint32_t rawBytesRx    = 0; // jedes vom UART gelesene Byte
+    uint32_t validFramesRx = 0; // Frames mit gueltiger CRC (== "frischer Frame da")
+    uint32_t crcErrorsRx   = 0; // Frames mit CRC-Fehler
+    uint32_t devicePingsRx = 0; // empfangene DEVICE_PING (an uns/Broadcast)
+    uint32_t paramReadsRx  = 0; // empfangene PARAMETER_READ (an uns/Broadcast)
+    uint32_t paramWritesRx = 0; // empfangene PARAMETER_WRITE (an uns/Broadcast)
 };
 
 #endif

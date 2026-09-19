@@ -154,9 +154,16 @@ void CRSF::updateLink_Statistics() {
 void CRSF::updateDevice_Info() {
 
 uint8_t frameLength = crfs_buffer[1];         // Länge ab crfs_buffer[2]
-uint8_t payloadLength = frameLength - 1; // ohne Typ-Byte
-uint8_t fixedFields = 4 * 3 + 2;         // 3 × uint32_t + 2 × uint8_t = 14
-uint8_t nameLength = payloadLength - fixedFields-1;
+// v2.00 FIX: Rechnung komplett in signed int statt uint8_t, damit ein zu
+// kurzer/kaputter DEVICE_INFO-Frame (z.B. von einem fremden Geraet auf dem
+// Bus) keinen Unsigned-Unterlauf verursacht, bevor die "> 31"-Sicherung
+// weiter unten greift. Zusaetzlich: zu kurze Frames werden jetzt komplett
+// verworfen statt mit einer (durch die Sicherung zwar harmlosen, aber
+// bedeutungslosen) geratenen nameLength weiterzurechnen.
+int payloadLength = (int)frameLength - 1; // ohne Typ-Byte
+int fixedFields = 4 * 3 + 2;              // 3 × uint32_t + 2 × uint8_t = 14
+if (payloadLength < fixedFields + 1) return; // zu kurz fuer ein gueltiges DEVICE_INFO - verwerfen
+int nameLength = payloadLength - fixedFields - 1;
 
 if (nameLength > 31) nameLength = 31;   // Sicherheit
 
@@ -244,6 +251,7 @@ void CRSF::crsfDataReceive() {
         case CRSF_FRAMETYPE_DEVICE_PING:
             if (crfs_buffer[3] != deviceAddress &&
                 crfs_buffer[3] != CRSF_ADDRESS_BROADCAST) break;
+            devicePingsRx++; // v2.00 Diagnose-Zaehler
             pingSource = crfs_buffer[4];  // Source des PING merken
             pingReceivedTime = millis();  // Zeitpunkt fuer Slot-Delay
             deviceInfoReplyPending = true; 
@@ -277,6 +285,7 @@ void CRSF::crsfDataReceive() {
             // Nur verarbeiten wenn wir die Zieladresse sind
             if (crfs_buffer[3] != deviceAddress &&
                 crfs_buffer[3] != CRSF_ADDRESS_BROADCAST) break;
+            paramReadsRx++; // v2.00 Diagnose-Zaehler
             paramReadSource = crfs_buffer[4];  // Source = Destination fuer Antwort
             paramReadIndex = crfs_buffer[5];  // angefragter Parameter
             deviceReadReplyPending = true;
@@ -293,6 +302,7 @@ void CRSF::crsfDataReceive() {
         case CRSF_FRAMETYPE_PARAMETER_WRITE:
             if (crfs_buffer[3] != deviceAddress &&
                 crfs_buffer[3] != CRSF_ADDRESS_BROADCAST) break;
+            paramWritesRx++; // v2.00 Diagnose-Zaehler
             paramWriteIndex = crfs_buffer[5];  // Parameter-Index
             paramWriteValue = crfs_buffer[6];  // Wert
             deviceWriteReplyPending = true;
@@ -309,6 +319,16 @@ void CRSF::crsfDataReceive() {
             break;    
 
         case CRSF_FRAMETYPE_COMMAND:
+            // v2.00: Zieladresse jetzt genauso geprueft wie bei PING/PARAMETER_
+            // READ/WRITE - vorher konnte JEDES Kommando auf dem Bus (auch an
+            // ein anderes Geraet adressiert) hier verarbeitet werden. Broadcast
+            // bleibt erlaubt: das WM-Multiswitch-Protokoll (MWset/MWset4/
+            // MWset4m/MWprop) adressiert bewusst per Broadcast und filtert erst
+            // auf Payload-Ebene nach der eigenen Modul-Adresse (siehe
+            // einkanalFunctionCRSF() in der .ino) - daran aendert dieser Check
+            // nichts, er blockt nur Kommandos an eine FREMDE Einzeladresse.
+            if (crfs_buffer[3] != deviceAddress &&
+                crfs_buffer[3] != CRSF_ADDRESS_BROADCAST) break;
             deviceCommandReplyPending = true;
             memcpy(cmdBuffer, crfs_buffer, CRSF_PACKET_SIZE); // Kommando sofort sichern (gegen Ueberschreiben)
 #if DEBUG_CRSF_TYPE 
@@ -340,6 +360,7 @@ void CRSF::read_packets(uint8_t debug) {
 
     while (serial_data->available() > 0) {
         data = serial_data->read();
+        rawBytesRx++; // v2.00 Diagnose-Zaehler: jedes vom UART gelesene Byte
 
         // Akzeptiere alle bekannten CRSF-Sync-Bytes (inkl. 0xEE/TBS-Agent, 0xEF/ELRS-LUA)
         if (byte_index == 0) {
@@ -367,6 +388,7 @@ void CRSF::read_packets(uint8_t debug) {
         if (byte_index == length + 1) {
             crfs_buffer[byte_index++] = data;
             if (data == crc8(&crfs_buffer[2], length - 1)) {
+                validFramesRx++; // v2.00: "gueltiger Frame da" - Basis fuer BUS_OK in der .ino
                 crsfDataReceive();
                 if (debug) {
                     Serial.print("RX-Buffer: ");
@@ -377,7 +399,23 @@ void CRSF::read_packets(uint8_t debug) {
                     Serial.println("");
                 }
             } else {
-                Serial.println("CRC Error");
+                // v2.00: CRC-Fehler jetzt gezaehlt statt bei jedem einzelnen
+                // Fehler sofort auszugeben - bei laengerem Funkrauschen konnte
+                // eine Serial.println() pro Fehler den Loop ausbremsen. Aus-
+                // gabe hoechstens alle 2s als Sammel-Meldung; der Zaehler
+                // selbst (crcErrorsRx) ist ueber getCrcErrors() immer aktuell
+                // und laeuft z.B. auf der Debug-Seite mit.
+                crcErrorsRx++;
+                static unsigned long lastCrcErrLogMs = 0;
+                static uint32_t crcErrSinceLog = 0;
+                crcErrSinceLog++;
+                unsigned long nowMs = millis();
+                if (nowMs - lastCrcErrLogMs >= 2000) {
+                    Serial.printf("CRC Error (%u seit letzter Meldung, gesamt %u)\n",
+                                  (unsigned)crcErrSinceLog, (unsigned)crcErrorsRx);
+                    crcErrSinceLog = 0;
+                    lastCrcErrLogMs = nowMs;
+                }
             }
             byte_index = 0;
             continue;

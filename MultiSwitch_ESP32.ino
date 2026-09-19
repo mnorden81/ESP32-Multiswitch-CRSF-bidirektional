@@ -1,10 +1,21 @@
 /*
-    ESP32-MultiSwitch  v1.42
+    ESP32-MultiSwitch  v2.00
+   v2.00 erstellt von: PiperPilot
    Basiert auf: ESP32-SBus-Switch 0.6   (Ziege-One / Der RC-Modellbauer)
    CRSF-Integration: ESP32-RC-Sound 0.43 (Ziege-One / Der RC-Modellbauer)
 
+ /////Projektbeschreibung////
+ RC-gesteuerter 8-Kanal-Schalter/PWM-Ausgabemodul für ESP32. Empfängt
+ Schaltbefehle über CRSF (ExpressLRS/TBS CrossFire, bidirektional) oder
+ über SBUS-basierte RC-Systeme (FrSky/FlySky/ELRS normiert/HoTT) und
+ steuert darüber acht digitale bzw. PWM-fähige Ausgänge (Licht, Blinker,
+ Servos, Relais o.ä.). Die gesamte Konfiguration erfolgt über eine im
+ Modul integrierte Weboberfläche (WLAN-Access-Point) - es wird kein
+ SD-Karten-Slot benötigt oder verwendet. Ausführliche Beschreibung siehe
+ ESP32-MultiSwitch-V2-Projektbeschreibung-v2.00.docx / README.md.
+
  /////Pin Belegung////
- GPIO 13: WiFi Pin (LOW = AP aktiv)
+ GPIO 13: WiFi Pin (LOW = AP beim Booten aktiv)
  GPIO 16: SBUS RX  /  CRSF RX
  GPIO 17: CRSF TX  (nur bei RC_System == 4)
  GPIO 18: Ausgang 1
@@ -23,6 +34,50 @@
    2 = ELRS normiert  (SBUS)
    3 = HoTT           (SBUS)
    4 = CRSF           (ExpressLRS / TBS CrossFire, bidirektional)
+
+ ÄNDERUNGEN v2.00 (übertragen aus dem Soundmodul-Projekt, ESP32-RC-Sound v7):
+   - CRSF-Diagnose-Zähler (rohe Bytes, gültige Frames, CRC-Fehler, PING/
+     PARAM-READ/WRITE) in crsf_esp32.h/.cpp, sichtbar im Debug-Tab der
+     Weboberfläche - macht "geht nicht" ohne Seriell-Monitor sichtbar.
+   - BUS_OK bei CRSF jetzt an den Zähler für gültige Frames gekoppelt statt
+     an "channel_output[0] > 0" (ein Kanalwert von 0 ist legitim und kein
+     zuverlässiger Nachweis für einen frischen Frame).
+   - CRC-Fehler werden gezählt statt bei jedem einzelnen Fehler sofort per
+     Serial.println() ausgegeben - verhindert, dass anhaltendes Funkrauschen
+     den Loop ausbremst; Sammel-Meldung höchstens alle 2s.
+   - updateDevice_Info() gegen zu kurze/kaputte DEVICE_INFO-Frames
+     abgesichert (signed-Rechnung + Mindestlängen-Check).
+   - CRSF_FRAMETYPE_COMMAND prüft jetzt die Zieladresse wie PING/PARAMETER_
+     READ/WRITE (mit Broadcast-Ausnahme fürs WM-Protokoll).
+   - Konfiguration exportieren/importieren als JSON-Datei über den Browser
+     (kein SD-Karten-Slot vorhanden - rein Web/WLAN-basiert), siehe webui.h.
+   - WLAN-Steuerung: optionales Auto-Failsafe schaltet den Access Point
+     automatisch ein, wenn längere Zeit kein gültiges RC-Signal anliegt
+     (z.B. Sender aus/außer Reichweite) - Default AUS, siehe
+     wifiFailsafeCheck() unten. Ergänzend manueller "WLAN jetzt ein/aus"-
+     Schalter (Web-UI), der ohne Neustart sofort wirkt, siehe webui.h.
+   - Firmware-Update per WLAN (OTA): eine mit der Arduino-IDE gebaute
+     .bin-Datei wird direkt im Browser hochgeladen und landet im gerade
+     inaktiven OTA-Flash-Segment - Ausbauen/USB-Flashen ist für spätere
+     Updates damit nicht mehr nötig. Schlägt der Upload fehl oder wird er
+     abgebrochen, bootet das Modul unverändert mit der bisherigen
+     Firmware weiter (kein Bricking-Risiko), siehe
+     handleOtaUpdateData()/handleOtaUpdate() in webui.h. Voraussetzung:
+     einmalig ein OTA-fähiges Partitionsschema per USB flashen, siehe
+     README. WICHTIG (Erfahrung aus dem Soundmodul-Projekt übernommen):
+     Update möglichst bei über ESC/Akku bestromtem Modul durchführen,
+     nicht nur über USB - manche USB-Anschlüsse liefern beim
+     Flash-Schreiben nicht genug Strom, ein dadurch ausgelöster Reset
+     bricht den Upload mittendrin ab.
+   - eeprom_esp32.h/hal_esp32.h/output_ctrl.h sind weiterhin NICHT
+     eingebunden (totes Code-Fragment eines nicht gemergten Refactorings,
+     jetzt oben in den Dateien selbst als solches gekennzeichnet).
+   - Fix (nach erstem Test): webui_init() rief webServer.begin() bisher
+     unabhängig vom AP-Status auf, ohne den WiFi-Treiber vorher zu
+     initialisieren. War der AP beim Booten nicht aktiv, fehlten dessen
+     interne FreeRTOS-Queues und es kam zum sofortigen Absturz
+     (assert failed: xQueueSemaphoreTake) mit Bootloop. Behoben durch
+     WiFi.mode(WIFI_AP) am Anfang von webui_init() (siehe webui.h).
 
  ÄNDERUNGEN v0.14 (Verbesserungen):
    - MWprop-Unterstützung aus ESP32-RC-Sound übernommen:
@@ -51,7 +106,7 @@
 #include "crsf_esp32.h"
 #include "blink_presets.h"
 
-constexpr uint16_t Version = 142; // 1.42
+constexpr uint16_t Version = 200; // 2.00
 
 // ======== SBUS-Schwellen (benannte Konstanten) ==================
 static constexpr uint16_t SBUS_LOW_THRESHOLD  =  800;
@@ -131,6 +186,17 @@ char        g_wifi_ip[16]       = "192.168.1.1";   // konfigurierbare AP-IP
 const char* AP_IP_STR           = g_wifi_ip;        // Alias fuer Abwaertskompatibilitaet
 char        g_device_name[24]   = "MultiSwitch";    // NEU V1.4: Geraetename im TBS Agent / LUA
 
+// ======== WLAN-Auto-Failsafe (NEU v2.00) ========================
+// Schaltet den Access Point automatisch ein, wenn ueber die eingestellte
+// Zeit kein gueltiges RC-Signal anliegt (nutzt BUS_OK) - z.B. wenn kein
+// Sender gebunden ist oder der Empfaenger fehlt, damit man trotzdem per
+// WLAN ins Web-Interface kommt, auch wenn der Boot-Pin (GPIO13) gerade
+// nicht erreichbar ist. Schaltet NUR ein, nie automatisch wieder aus
+// (siehe wifiFailsafeCheck() weiter unten). Default AUS (opt-in), damit
+// ein Firmware-Update auf v2.00 das bisherige Verhalten nicht aendert.
+bool     g_wifi_auto         = false;
+uint16_t g_wifi_auto_timeout = 60;   // Sekunden, gueltiger Bereich 5-240
+
 // ======== NVS ===================================================
 static bool nvsDirty = false;
 static bool nvsSaveScheduled = false;
@@ -155,6 +221,8 @@ static void nvsWriteNow() {
     p.putString("pass", g_wifi_pass);
     p.putString("ip",   g_wifi_ip);
     p.putString("dnam", g_device_name);   // NEU V1.4
+    p.putBool("wauto",  g_wifi_auto);         // NEU v2.00
+    p.putUInt("watout", g_wifi_auto_timeout); // NEU v2.00
     p.end();
     nvsDirty = false;
     nvsSaveScheduled = false;
@@ -205,6 +273,9 @@ static void nvsLoad() {
     strncpy(g_wifi_pass,    pw.c_str(),   sizeof(g_wifi_pass)-1);
     strncpy(g_wifi_ip,      ip.c_str(),   sizeof(g_wifi_ip)-1);
     strncpy(g_device_name,  dnam.c_str(), sizeof(g_device_name)-1);
+    g_wifi_auto         = p.getBool("wauto",  false); // NEU v2.00
+    g_wifi_auto_timeout = p.getUInt("watout", 60);    // NEU v2.00
+    if (g_wifi_auto_timeout < 5 || g_wifi_auto_timeout > 240) g_wifi_auto_timeout = 60;
     p.end();
     nvsDirty = false;
     nvsSaveScheduled = false;
@@ -221,6 +292,7 @@ static void nvsReset() {
     strncpy(g_wifi_pass,   "123456789",   sizeof(g_wifi_pass)-1);
     strncpy(g_wifi_ip,     "192.168.1.1", sizeof(g_wifi_ip)-1);
     strncpy(g_device_name, "MultiSwitch", sizeof(g_device_name)-1);  // NEU V1.4
+    g_wifi_auto = false; g_wifi_auto_timeout = 60;   // NEU v2.00
     nvsSave();
     nvsFlushPending();
 }
@@ -546,6 +618,44 @@ static void crsfWriteParam(uint8_t idx, uint8_t val) {
 
 #include "webui.h"
 
+// ======== WLAN-Auto-Failsafe (NEU v2.00) ========================
+// Schaltet NUR ein, nie automatisch wieder aus: einmal aktiviertes WLAN
+// bleibt an bis zum manuellen Ausschalten (Web) oder Neustart - ein
+// automatisches Wieder-Abschalten wuerde eine gerade laufende Konfiguration
+// mitten drin abwuergen, sobald zufaellig kurz ein gueltiges RC-Signal
+// hereinkaeme. g_wifi_auto/g_wifi_auto_timeout siehe weiter oben, webui_
+// isApActive()/webui_enableAP() in webui.h.
+static void wifiFailsafeCheck() {
+    static unsigned long busLostSinceMs = 0;
+    static bool          busLostSincePending = false;
+
+    if (BUS_OK) {
+        busLostSincePending = false;
+        return;
+    }
+    if (!g_wifi_auto) {
+        busLostSincePending = false;
+        return;
+    }
+    if (webui_isApActive()) {
+        // WLAN laeuft bereits (manuell oder schon vom Failsafe gestartet) -
+        // nichts zu tun (siehe Kommentar oben, "nie automatisch wieder aus").
+        busLostSincePending = false;
+        return;
+    }
+    if (!busLostSincePending) {
+        busLostSincePending = true;
+        busLostSinceMs = millis();
+        return;
+    }
+    unsigned long timeoutMs = (unsigned long)g_wifi_auto_timeout * 1000UL;
+    if (millis() - busLostSinceMs >= timeoutMs) {
+        Serial.printf("Auto-WLAN-Failsafe: %u s ohne gueltiges RC-Signal - schalte WLAN ein.\n",
+                      (unsigned)g_wifi_auto_timeout);
+        webui_enableAP();
+    }
+}
+
 // ======== PWM-Duty für Ausgang x ermitteln (NEU v0.14) ==========
 // Unterstützt drei Quellen:
 //   pwm_wert[x] < 200          → Festwert (direkt als uint8_t)
@@ -665,14 +775,21 @@ void setup() {
 void loop() {
 
     nvsProcessPending();
+    wifiFailsafeCheck(); // NEU v2.00 - unbedingt am Loop-Anfang, damit auch der SBUS-Failsafe-Fruehausstieg unten ihn nicht ueberspringt
 
     if (RC_System_boot == 4) {
         crsf.read_packets(0);
         for (int i = 0; i < 16; i++)
             channel_output[i] = crsf.get_crfs_channels(i);
 
-        // BUS_OK: channel_output[0] > 0 zeigt aktives CRSF-Signal
-        if (channel_output[0] > 0) {
+        // BUS_OK (v2.00 FIX): jetzt an "wurde gerade ein gueltiger CRSF-Frame
+        // geparst" gekoppelt (crsf.getValidFrames() hat sich erhoeht), nicht
+        // mehr an "channel_output[0] > 0" - ein Kanalwert von 0 ist legitim
+        // und daher kein zuverlaessiger Nachweis fuer einen frischen Frame.
+        static uint32_t lastValidFrameCount = 0;
+        uint32_t validFrames = crsf.getValidFrames();
+        if (validFrames != lastValidFrameCount) {
+            lastValidFrameCount = validFrames;
             BUS_OK = true;
             lastCrsfPacket = millis();
         }

@@ -4,6 +4,18 @@
  * Ersetzt die WMuCpp STM32-Bibliothek (Mcu::Stm::*, External::Tick, ...)
  *
  * Portierung von msw30 (STM32G0B1) → ESP32 / ESP32-S3
+ *
+ * ══════════════════════════════════════════════════════════════════════
+ *  HINWEIS (v2.00): NICHT VERWENDET / ARCHIV
+ *  Diese Datei wird von MultiSwitch_ESP32.ino nicht eingebunden (kein
+ *  #include "hal_esp32.h" dort) - Rest eines nicht gemergten Refactoring-
+ *  Versuchs Richtung objektorientierter HAL-Architektur (zusammen mit
+ *  eeprom_esp32.h und output_ctrl.h). Die tatsächlich aktive Firmware
+ *  greift direkt über Arduino-Funktionen (digitalWrite/ledcWrite/millis
+ *  usw.) und Preferences (NVS) in MultiSwitch_ESP32.ino zu. Vor einer
+ *  Weiterverwendung dieser Datei erst prüfen, ob sie noch zum aktuellen
+ *  Stand passt.
+ * ══════════════════════════════════════════════════════════════════════
  */
 
 #pragma once

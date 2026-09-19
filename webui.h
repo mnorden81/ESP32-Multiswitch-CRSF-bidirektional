@@ -1,5 +1,5 @@
 /*
- * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch  v1.42
+ * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch  v2.00
  */
 
 #pragma once
@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <Update.h>          // NEU v2.00: Firmware-Update per WLAN (OTA), siehe handleOtaUpdate*()
 
 // ============================================================
 //  Forward-Deklarationen
@@ -38,6 +39,8 @@ extern uint8_t       wm_prop_value[8];   // NEU v0.14
 extern void          storageSave();
 extern void          nvsSave();
 extern void          nvsReset();
+extern bool          g_wifi_auto;          // NEU v2.00
+extern uint16_t      g_wifi_auto_timeout;  // NEU v2.00
 
 // ============================================================
 //  Debug
@@ -59,6 +62,13 @@ bool g_manual_state[8]    = {};
 //  WebServer
 // ============================================================
 static WebServer webServer(80);
+
+// AP-Steuerung (NEU v2.00) - Definitionen weiter unten bei webui_init(),
+// hier vorab deklariert, weil handleStatus() (weiter oben im File) den
+// aktuellen AP-Status schon mit ausliefert.
+bool webui_isApActive();
+void webui_enableAP();
+void webui_disableAP();
 
 // ============================================================
 //  HTML (PROGMEM) – identisch zu v0.13, nur Version aktualisiert
@@ -282,6 +292,41 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
       <button class="btn btn-primary" style="margin-top:8px" onclick="saveWifi()">Speichern &amp; Neustart</button>
     </div>
     <div class="card">
+      <div class="card-title">WLAN jetzt (NEU v2.00)</div>
+      <div class="row"><label>Access Point</label>
+        <span id="wifi-ap-state" style="font-weight:600">–</span>
+        <button class="btn btn-ghost btn-sm" onclick="toggleWifi(true)">Einschalten</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleWifi(false)">Ausschalten</button>
+      </div>
+      <div class="row"><label>Auto bei Signalverlust</label>
+        <select id="sel-wifi-auto" onchange="saveWifiAuto()">
+          <option value="0">Aus</option>
+          <option value="1">Ein</option>
+        </select>
+      </div>
+      <div class="row"><label>Timeout (s)</label>
+        <input type="number" id="inp-wifi-auto-to" min="5" max="240" step="1" onchange="saveWifiAuto()">
+      </div>
+      <span style="color:var(--sub);font-size:12px;display:block">Schaltet den Access Point automatisch ein, wenn so lange kein g&uuml;ltiges RC-Signal anliegt (z.&nbsp;B. Sender aus). Schaltet nie automatisch wieder aus.</span>
+    </div>
+    <div class="card">
+      <div class="card-title">Konfiguration sichern/wiederherstellen (NEU v2.00)</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <button class="btn btn-ghost btn-sm" onclick="exportConfig()">&#8681; Als Datei exportieren</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('cfg-import-file').click()">&#8679; Aus Datei importieren</button>
+        <input type="file" id="cfg-import-file" accept="application/json" style="display:none" onchange="importConfigFile(this.files[0])">
+      </div>
+      <span style="color:var(--sub);font-size:12px;display:block">Sichert alle Ausg&auml;nge und Einstellungen als JSON-Datei im Browser (kein SD-Slot n&ouml;tig). Import ersetzt die aktuelle Konfiguration inkl. WLAN-Zugangsdaten.</span>
+    </div>
+    <div class="card" id="c-ota">
+      <div class="card-title">Firmware-Update (OTA, NEU v2.00)</div>
+      <span style="color:var(--sub);font-size:12px;display:block;margin-bottom:8px">Spielt eine mit der Arduino-IDE gebaute .bin-Datei direkt per WLAN auf – Ausbauen und USB-Flashen ist damit nicht mehr n&ouml;tig. Setzt eine OTA-f&auml;hige Partitionstabelle voraus (siehe README).</span>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('ota-file').click()">&#8679; Firmware-Datei w&auml;hlen (.bin)</button>
+      <input type="file" id="ota-file" accept=".bin,application/octet-stream" style="display:none" onchange="uploadOtaFile(this.files[0])">
+      <div style="margin-top:8px;font-size:12px" id="ota-status"></div>
+      <span style="color:var(--yellow);font-size:12px;display:block;margin-top:8px">&#9888; W&auml;hrend des Uploads die Spannungsversorgung des Moduls NICHT unterbrechen. Update m&ouml;glichst bei &uuml;ber ESC/Akku bestromtem Modul durchf&uuml;hren, nicht nur &uuml;ber USB – manche USB-Anschl&uuml;sse liefern beim Flash-Schreiben nicht genug Strom, ein dadurch ausgel&ouml;ster Reset bricht den Upload ab. Nach Erfolg startet das Modul automatisch neu, die WLAN-Verbindung bricht dabei kurz ab – das ist normal.</span>
+    </div>
+    <div class="card">
       <div class="card-title">Werkseinstellungen</div>
       <button class="btn btn-danger" onclick="if(confirm('Alles zurücksetzen?'))doReset()">Zurücksetzen</button>
     </div>
@@ -292,6 +337,10 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
     <div class="card">
       <div class="card-title">Live-Status</div>
       <div id="debug-body" class="mono" style="line-height:1.8"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">CRSF-Diagnose (NEU v2.00)</div>
+      <div id="crsf-diag-body" class="mono" style="line-height:1.8"></div>
     </div>
     <div class="card">
       <div class="card-title">MWprop-Kanalwerte</div>
@@ -312,7 +361,7 @@ function showTab(t){
     el.classList.toggle('active',['overview','outputs','rc','wifi','debug'][i]===t);
   });
   if(t==='debug') startPoll(); else stopPoll();
-  if(t==='overview'||t==='outputs') fetchStatus();
+  if(t==='overview'||t==='outputs'||t==='wifi') fetchStatus();
   if(t==='rc'||t==='wifi') fetchConfig();
 }
 
@@ -327,6 +376,8 @@ async function fetchStatus(){
   const dot=$('dot');
   dot.className='dot '+(d.bus_ok?'ok':'err');
   $('hv').textContent=(d.version||'v?')+' · '+d.rc_system_name+(d.bus_ok?' · Signal OK':' · Kein Signal');
+  const apEl=$('wifi-ap-state');
+  if(apEl) apEl.textContent=d.wifi_ap_active?'an':'aus';
   renderTiles(d);
   if(curOut>=0) renderOutDetail(d,curOut);
   // Kanalwerte auf Startseite
@@ -530,6 +581,8 @@ async function fetchConfig(){
   $('inp-ssid').value=d.ssid;
   $('inp-pass').value=d.pass;
   $('inp-ip').value=d.ip;
+  $('sel-wifi-auto').value=d.wifi_auto?1:0;
+  $('inp-wifi-auto-to').value=d.wifi_auto_timeout;
   updateRcRows(d.rc_system, ek);
   window._rcBoot=parseInt(d.rc_system);
 }
@@ -614,6 +667,134 @@ async function doReset(){
   alert('Zurückgesetzt. Neustart in 5s…');
 }
 
+// ─── WLAN jetzt (NEU v2.00) ────────────────────────────────────────────
+// Wirkt sofort, ohne Neustart und ohne die Konfiguration zu speichern
+// (siehe handleWifi() in webui.h) - unabhängig vom Auto-Failsafe unten.
+async function toggleWifi(enable){
+  await api('/api/wifi',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({enable})});
+  fetchStatus();
+}
+async function saveWifiAuto(){
+  await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      wifi_auto:$('sel-wifi-auto').value==='1',
+      wifi_auto_timeout:parseInt($('inp-wifi-auto-to').value)||60
+    })});
+}
+
+// ─── Konfiguration Export/Import (NEU v2.00) ──────────────────────────
+// Export: liest /api/config (globale Einstellungen) + /api/status (Ausgänge)
+// und bietet das Ergebnis als Datei zum Download an - ganz normaler
+// Browser-Download, da der Webserver direkt auf dem Modul läuft. Kein SD-
+// Slot nötig/vorhanden - bewusst rein Browser-basiert.
+async function exportConfig(){
+  const cfg=await api('/api/config');
+  const st=await api('/api/status');
+  if(!cfg||!st){ alert('Export fehlgeschlagen (Gerät nicht erreichbar).'); return; }
+  const data={
+    device:'ESP32-MultiSwitch', version:st.version||'', exported:new Date().toISOString(),
+    settings:cfg,
+    outputs:st.outputs.map((o,i)=>({ch:i,name:o.name,kanal:o.kanal,pwm:o.pwm,mode:o.mode}))
+  };
+  const text=JSON.stringify(data,null,2);
+  let name='multiswitch-config';
+  if(cfg.dnam) name+='-'+String(cfg.dnam).replace(/[^A-Za-z0-9_-]+/g,'_');
+  name+='.json';
+  const blob=new Blob([text],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+// Import: Datei einlesen, grob validieren, bestätigen lassen (WLAN-
+// Zugangsdaten werden überschrieben), dann Schritt für Schritt über die
+// bestehenden POST-Endpunkte einspielen und zum Schluss ohne Neustart
+// speichern (/api/save).
+function importConfigFile(file){
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(){
+    let data;
+    try{ data=JSON.parse(reader.result); }catch(e){ alert('Ungültige JSON-Datei.'); return; }
+    if(!data||!data.settings||!Array.isArray(data.outputs)){
+      alert('Datei enthält keine gültige MultiSwitch-Konfiguration.'); return;
+    }
+    if(!confirm('Aktuelle Konfiguration (inkl. WLAN-Zugangsdaten) durch die Datei ersetzen?')) return;
+    importConfigData(data);
+  };
+  reader.onerror=function(){ alert('Datei konnte nicht gelesen werden.'); };
+  reader.readAsText(file);
+  // Sonst laesst sich dieselbe Datei kein zweites Mal auswaehlen (onchange
+  // feuert bei unveraendertem value nicht erneut).
+  $('cfg-import-file').value='';
+}
+async function importConfigData(data){
+  const s=data.settings||{};
+  await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      rc_system:s.rc_system, crsf_channel:s.crsf_channel, einkanal_mode:s.einkanal_mode,
+      modul_adress:s.modul_adress, dnam:s.dnam, ssid:s.ssid, pass:s.pass, ip:s.ip,
+      wifi_auto:s.wifi_auto, wifi_auto_timeout:s.wifi_auto_timeout
+    })});
+  for(const o of (data.outputs||[])){
+    if(o.ch===undefined) continue;
+    await api('/api/output',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ch:o.ch,kanal:o.kanal,pwm:o.pwm,mode:o.mode,name:o.name})});
+  }
+  await api('/api/save',{method:'POST'});
+  alert('Konfiguration importiert. Seite wird neu geladen…');
+  window.location.reload();
+}
+
+// ─── Firmware-Update per WLAN (OTA, NEU v2.00) ─────────────────────────
+// Echtes multipart/form-data an /api/otaupdate (siehe handleOtaUpdateData()/
+// handleOtaUpdate() in webui.h) - Fortschritt per XHR-upload.onprogress,
+// da fetch() das (noch) nicht zuverlaessig unterstuetzt. Bei Erfolg startet
+// das Modul selbst neu; die Antwort trifft trotzdem noch ein, bevor die
+// Verbindung tatsaechlich abbricht.
+function uploadOtaFile(file){
+  if(!file) return;
+  if(!confirm('Firmware-Update mit "'+file.name+'" starten? Waehrend des '+
+              'Uploads die Spannungsversorgung des Moduls NICHT unterbrechen '+
+              '- moeglichst ueber ESC/Akku bestromt, nicht nur ueber USB. '+
+              'Das Modul startet danach automatisch neu.')){
+    $('ota-file').value=''; return;
+  }
+  const status=$('ota-status');
+  status.textContent='Hochladen … (0%)';
+
+  const fd=new FormData();
+  fd.append('file',file,file.name);
+
+  const x=new XMLHttpRequest();
+  x.open('POST','/api/otaupdate',true);
+  x.upload.onprogress=function(e){
+    if(e.lengthComputable) status.textContent='Hochladen … ('+Math.round(e.loaded/e.total*100)+'%)';
+  };
+  x.onload=function(){
+    try{
+      const d=JSON.parse(x.responseText);
+      if(d.ok){
+        status.textContent='Update erfolgreich ('+d.size+' Bytes) – Modul startet neu …';
+      } else {
+        status.textContent='Fehler ('+d.error+')';
+        alert('Update fehlgeschlagen ('+d.error+').');
+      }
+    }catch(e){ status.textContent='Fehler beim Hochladen'; alert('Update fehlgeschlagen.'); }
+  };
+  x.onerror=function(){
+    // Kann auch bedeuten, dass das Update erfolgreich war und das Modul
+    // bereits neu startet, bevor die Antwort ankam - fuer den Nutzer nicht
+    // unterscheidbar von einem echten Verbindungsfehler.
+    status.textContent='Verbindung unterbrochen – Update war evtl. trotzdem erfolgreich (neu verbinden und prüfen).';
+  };
+  x.send(fd);
+  $('ota-file').value='';
+}
+
 function startPoll(){pollTimer=setInterval(pollDebug,800);}
 function stopPoll(){clearInterval(pollTimer);}
 async function pollDebug(){
@@ -628,7 +809,23 @@ async function pollDebug(){
   });
   html+=`Einkanal-Data: 0x${d.einkanal_data_hex}<br>`;
   html+=`Kanäle: ${d.channels.map((v,i)=>`ch${i+1}=${v}`).join(' ')}<br>`;
+  html+=`WLAN-AP: ${d.wifi_ap_active?'<b>an</b>':'aus'}<br>`;
   $('debug-body').innerHTML=html;
+
+  // CRSF-Diagnose (NEU v2.00) - bei SBUS bleiben die Zaehler auf 0
+  if(d.crsf_diag){
+    const c=d.crsf_diag;
+    let ch='';
+    ch+=`Rohe Bytes: ${c.raw_bytes}<br>`;
+    ch+=`Gültige Frames: ${c.valid_frames}<br>`;
+    ch+=`CRC-Fehler: ${c.crc_errors}<br>`;
+    ch+=`DEVICE_PING empfangen: ${c.device_pings}<br>`;
+    ch+=`PARAMETER_READ empfangen: ${c.param_reads}<br>`;
+    ch+=`PARAMETER_WRITE empfangen: ${c.param_writes}<br>`;
+    $('crsf-diag-body').innerHTML=ch;
+  } else {
+    $('crsf-diag-body').innerHTML='Keine Daten';
+  }
 
   // MWprop
   let ph='';
@@ -799,7 +996,18 @@ static void handleStatus() {
     // MWprop-Werte (NEU v0.14)
     j += "\"wm_prop\":[";
     for (int i = 0; i < 8; i++) { if(i)j+=","; j+=wm_prop_value[i]; }
-    j += "]";
+    j += "],";
+
+    // CRSF-Diagnose-Zaehler (NEU v2.00) - bei SBUS bleiben sie auf 0
+    j += "\"crsf_diag\":{";
+    j += "\"raw_bytes\":"    + String(crsf.getRawBytesRx())  + ",";
+    j += "\"valid_frames\":" + String(crsf.getValidFrames()) + ",";
+    j += "\"crc_errors\":"   + String(crsf.getCrcErrors())   + ",";
+    j += "\"device_pings\":" + String(crsf.getDevicePings()) + ",";
+    j += "\"param_reads\":"  + String(crsf.getParamReads())  + ",";
+    j += "\"param_writes\":" + String(crsf.getParamWrites());
+    j += "},";
+    j += "\"wifi_ap_active\":" + String(webui_isApActive() ? "true" : "false");
 
     j += "}";
     sendJson(j);
@@ -818,7 +1026,9 @@ static void handleConfig() {
       j += "\"dnam\":\""        + jsonEscape(g_device_name)  + "\",";
       j += "\"ssid\":\""        + jsonEscape(g_wifi_ssid)    + "\",";
       j += "\"pass\":\""        + jsonEscape(g_wifi_pass)    + "\",";
-      j += "\"ip\":\""          + jsonEscape(g_wifi_ip)      + "\"";
+      j += "\"ip\":\""          + jsonEscape(g_wifi_ip)      + "\",";
+        j += "\"wifi_auto\":"      + String(g_wifi_auto ? "true" : "false") + ",";
+        j += "\"wifi_auto_timeout\":" + String(g_wifi_auto_timeout);
         j += "}";
         sendJson(j);
         return;
@@ -845,6 +1055,16 @@ static void handleConfig() {
     if (jsonExtractInt(body, "modul_adress", v)) {
       v = constrain(v, 0, 20);
       if (v != modul_adress) { modul_adress = v; changed = true; }
+    }
+
+    // NEU v2.00: WLAN-Auto-Failsafe
+    bool bv = false;
+    if (jsonExtractBool(body, "wifi_auto", bv)) {
+      if (bv != g_wifi_auto) { g_wifi_auto = bv; changed = true; }
+    }
+    if (jsonExtractInt(body, "wifi_auto_timeout", v)) {
+      v = constrain(v, 5, 240);
+      if ((uint16_t)v != g_wifi_auto_timeout) { g_wifi_auto_timeout = (uint16_t)v; changed = true; }
     }
 
     String s;
@@ -986,17 +1206,164 @@ static void handleReset() {
 }
 
 // ============================================================
+//  API: /api/save  (NEU v2.00)
+// ============================================================
+// Schreibt die Konfiguration sofort auf Flash, OHNE neu zu starten - anders
+// als /api/restart. Wird vom Config-Import gebraucht, der mehrere /api/
+// config- und /api/output-Aufrufe hintereinander macht und erst am Ende
+// einmal sichern will (statt bei jedem einzelnen Schritt neu zu starten).
+static void handleSave() {
+    storageSave();
+    sendOk();
+}
+
+// ============================================================
+//  API: /api/wifi  (NEU v2.00)
+// ============================================================
+// Manueller WLAN-Schalter: wirkt SOFORT ueber webui_enableAP()/
+// webui_disableAP(), absichtlich OHNE nvsSave() - wie der bisherige "Test"-
+// Schalter fuer Ausgaenge ist das nur ein Laufzeit-Zustand, kein Teil der
+// gespeicherten Konfiguration. Fuer dauerhaftes Verhalten siehe wifi_auto/
+// wifi_auto_timeout in /api/config.
+static void handleWifi() {
+    if (webServer.method() != HTTP_POST) { send404(); return; }
+    if (!webServer.hasArg("plain")) { send404(); return; }
+    String body = webServer.arg("plain");
+    bool enable = false;
+    if (!jsonExtractBool(body, "enable", enable)) { send404(); return; }
+    if (enable) webui_enableAP(); else webui_disableAP();
+    sendOk();
+}
+
+// ============================================================
+//  API: /api/otaupdate  (NEU v2.00, uebernommen aus dem Soundmodul-Projekt)
+// ============================================================
+// Firmware-Update direkt per WLAN: .bin-Datei per multipart/form-data hoch-
+// laden, wird ueber die Arduino-"Update"-Bibliothek in das gerade INAKTIVE
+// OTA-Flash-Segment geschrieben (ota_0/ota_1 - siehe README, Abschnitt
+// "Partitionsschema"). Die aktuell laufende Firmware liegt im jeweils
+// ANDEREN Segment und bleibt waehrend des gesamten Uploads unangetastet:
+// schlaegt der Upload fehl oder wird er abgebrochen, bootet das Modul beim
+// naechsten Start einfach mit der bisherigen Firmware weiter (kein Bricking-
+// Risiko durch einen misslungenen Upload). Zwei-Handler-Muster wie beim
+// ESP32 WebServer fuer Datei-Uploads ueblich: handleOtaUpdateData() wird
+// waehrend des Uploads mehrfach aufgerufen (Callback-Argument von
+// webServer.on()), handleOtaUpdate() genau einmal danach fuer die Antwort.
+static bool     otaFailed  = false;
+static String   otaErrCode;
+static uint32_t otaBytes   = 0;
+static bool     otaStarted = false;
+
+static void handleOtaUpdateData() {
+    HTTPUpload& upload = webServer.upload();
+
+    if (upload.status == UPLOAD_FILE_START) {
+        otaFailed = false; otaErrCode = ""; otaBytes = 0; otaStarted = false;
+        Serial.printf("[OTA] Start: %s\n", upload.filename.c_str());
+        // Bei multipart/form-data ist die Gesamtgroesse vorab nicht bekannt -
+        // UPDATE_SIZE_UNKNOWN laesst die Bibliothek bis zum Ende des jeweiligen
+        // OTA-Segments schreiben; die eigentliche Vollstaendigkeitspruefung
+        // passiert bei Update.end() unten.
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+            otaFailed = true; otaErrCode = "update_begin";
+            return;
+        }
+        otaStarted = true;
+
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (otaFailed || !otaStarted) return; // vorheriger Fehler - Rest verwerfen
+        // Grobe Plausibilitaetspruefung am allerersten Haeppchen: jede gueltige
+        // ESP32-Firmware beginnt mit dem Magic-Byte 0xE9. Faengt eine versehent-
+        // lich falsche Datei (z.B. eine JSON-Konfigurationsdatei) frueh ab,
+        // statt sie komplett hochzuladen und erst bei Update.end() abzulehnen.
+        if (otaBytes == 0 && upload.currentSize > 0 && upload.buf[0] != 0xE9) {
+            otaFailed = true; otaErrCode = "bad_file";
+            return;
+        }
+        size_t written = Update.write(upload.buf, upload.currentSize);
+        otaBytes += written;
+        if (written != upload.currentSize) {
+            otaFailed = true; otaErrCode = "flash_write"; // z.B. Segment voll
+        }
+
+    } else if (upload.status == UPLOAD_FILE_END || upload.status == UPLOAD_FILE_ABORTED) {
+        if (upload.status == UPLOAD_FILE_ABORTED) { otaFailed = true; otaErrCode = "aborted"; }
+        if (otaStarted) {
+            if (otaFailed) {
+                Update.abort();
+            } else if (!Update.end(true)) {
+                // "true" = neue Partition als bootfaehig markieren, aber nur wenn
+                // die empfangenen Bytes vollstaendig sind - schlaegt z.B. an, wenn
+                // die Datei kein vollstaendiges Firmware-Image ist oder mitten in
+                // der Uebertragung abgebrochen wurde, ohne dass ABORTED erkannt wird.
+                otaFailed = true; otaErrCode = "update_end";
+            } else {
+                Serial.printf("[OTA] Fertig: %u Bytes\n", (unsigned)otaBytes);
+            }
+        }
+    }
+}
+
+// Wird einmal aufgerufen, NACHDEM der Upload-Callback oben fertig ist -
+// schickt die JSON-Antwort und startet das Modul bei Erfolg neu. Die
+// Antwort wird per flush() explizit hinausgeschickt und dann kurz gewartet,
+// damit sie den Browser noch erreicht, BEVOR der Neustart die WLAN-
+// Verbindung (kurzzeitig) abbrechen laesst.
+static void handleOtaUpdate() {
+    if (otaFailed) {
+        webServer.send(200, "application/json", "{\"ok\":false,\"error\":\"" + otaErrCode + "\"}");
+        return;
+    }
+    sendJson("{\"ok\":true,\"size\":" + String(otaBytes) + "}");
+    webServer.client().flush();
+    delay(500);
+    ESP.restart();
+}
+
+// ============================================================
 //  webui_init / webui_handle
 // ============================================================
+// AP-Start/-Stop als eigene Funktionen (NEU v2.00, uebernommen aus dem
+// Soundmodul-Projekt) - vorher direkt in webui_init() und damit nur beim
+// Booten (GPIO13 == LOW) moeglich. Jetzt auch zur Laufzeit aufrufbar: manuell
+// per /api/wifi oder automatisch per wifiFailsafeCheck() in der .ino.
+static bool g_apActive = false;
+
+bool webui_isApActive() { return g_apActive; }
+
+void webui_enableAP() {
+    if (g_apActive) return;
+    IPAddress apIP, gw, subnet(255,255,255,0);
+    if (!apIP.fromString(g_wifi_ip)) apIP.fromString("192.168.1.1");
+    gw = apIP;
+    WiFi.softAPConfig(apIP, gw, subnet);
+    WiFi.softAP(g_wifi_ssid, g_wifi_pass);
+    g_apActive = true;
+    Serial.printf("AP gestartet (Heap frei: %u Bytes), IP: %s\n",
+                  (unsigned)ESP.getFreeHeap(), WiFi.softAPIP().toString().c_str());
+}
+
+void webui_disableAP() {
+    if (!g_apActive) return;
+    WiFi.softAPdisconnect(true);
+    g_apActive = false;
+    Serial.println("AP gestoppt.");
+}
+
 void webui_init() {
+    // FIX v2.00: WiFi-Treiber (LWIP/Netif) MUSS initialisiert sein, bevor
+    // webServer.begin() unten laeuft - sonst existieren dessen interne
+    // FreeRTOS-Queues noch nicht und es kommt beim Anlegen des Server-Sockets
+    // zum Absturz ("assert failed: xQueueSemaphoreTake"), naemlich immer dann,
+    // wenn der AP beim Booten NICHT aktiviert wird (GPIO13 nicht LOW und
+    // WLAN-Auto-Failsafe (noch) nicht ausgeloest). WiFi.mode(WIFI_AP) legt nur
+    // den Treiber/die Queues an, sendet aber noch nichts sichtbares - das
+    // eigentliche Einschalten des Access Points (SSID sichtbar) macht weiterhin
+    // ausschliesslich webui_enableAP().
+    WiFi.mode(WIFI_AP);
+
     if (!digitalRead(WifiPin)) {
-        IPAddress apIP, gw, subnet(255,255,255,0);
-        if (!apIP.fromString(g_wifi_ip)) apIP.fromString("192.168.1.1");
-        gw = apIP;
-        WiFi.softAPConfig(apIP, gw, subnet);
-        WiFi.softAP(g_wifi_ssid, g_wifi_pass);
-        Serial.print("AP gestartet, IP: ");
-        Serial.println(WiFi.softAPIP());
+        webui_enableAP();
     }
     webServer.on("/",            HTTP_GET,  []{ webServer.send_P(200,"text/html",WEBUI_HTML); });
     webServer.on("/api/status",  HTTP_GET,  handleStatus);
@@ -1006,6 +1373,12 @@ void webui_init() {
     webServer.on("/api/output",  HTTP_POST, handleOutput);
     webServer.on("/api/reset",   HTTP_POST, handleReset);
     webServer.on("/api/restart", HTTP_POST, handleRestart);
+    webServer.on("/api/save",    HTTP_POST, handleSave);
+    webServer.on("/api/wifi",    HTTP_POST, handleWifi);
+    webServer.on("/api/otaupdate", HTTP_POST, handleOtaUpdate, handleOtaUpdateData);
+    // WebServer.begin() bewusst unabhaengig vom AP-Status: der Server lauscht
+    // so schon, sobald der AP spaeter per Auto-Failsafe/manuell aktiviert wird
+    // (kein erneutes .begin() noetig).
     webServer.begin();
     Serial.println("WebServer gestartet.");
 }
