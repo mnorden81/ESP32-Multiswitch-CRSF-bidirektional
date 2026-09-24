@@ -1,8 +1,86 @@
-# ESP32-MultiSwitch v2.00
+# ESP32-MultiSwitch v3.10
 
 RC-gesteuerter 8-Kanal-Schalter für ESP32 mit Web-Interface.
 
 *v2.00 erstellt von: PiperPilot*
+
+**Eigenständiges Projekt**, abgezweigt von `ESP32-MultiSwitch v2.02`
+(Ordner `ESP32_Multiswitch_2/ESP32-Multiswitch-CRSF-bidirektional/`).
+v2.xx bleibt dort unverändert bestehen und wird von dieser Version nicht
+berührt – beide Projekte sind unabhängig voneinander baubar.
+
+## Änderungen v3.10 (Mehrfachkonfiguration pro Ausgang)
+
+- **Neu: bis zu 3 unabhängige Konfigurationen ("Konfig 1/2/3") pro Ausgang**
+  – jede mit eigener Kanal-Quelle (Einzelkanal/Kanal_L/Kanal_H/MKan1/MKan2,
+  wie bisher), eigenem Blink-Timing (AN-/AUS-Zeit) und eigener PWM-Quelle/
+  -Wert. Konfig 2 und 3 sind **optional** (Default "Nicht verwendet").
+- **Kombinationslogik: Priorität Konfig1 > Konfig2 > Konfig3** – sind
+  mehrere Konfigurationen gleichzeitig aktiv, bestimmt die mit der
+  höchsten Priorität (niedrigste Nummer) das Blink-/PWM-Verhalten des
+  Ausgangs. Das entspricht der bisherigen Semantik von Konfig 1, die sich
+  dadurch nicht ändert – bestehende Konfigurationen laufen unverändert
+  weiter, solange Konfig 2/3 nicht genutzt werden.
+- **Anwendungsbeispiel**: ein Ausgang soll sowohl über den bestehenden
+  Einzelkanal-Schalter als auch zusätzlich über eine MKan-Gruppe
+  ausgelöst werden können, ggf. sogar mit unterschiedlichem Blink-Muster
+  je nach auslösender Quelle.
+- **Bewusst nur in der Web-UI** verfügbar (Karte "Ausgänge" → Ausgang
+  auswählen → "Konfig 1/2/3"), **nicht im CRSF-LUA-Menü** – das LUA-Menü
+  bleibt unverändert bei einer Kanal-Quelle pro Ausgang, um die Anzahl der
+  Sender-seitigen Parameter-Felder nicht unnötig aufzublähen.
+- NVS-Migration ohne Handeingriff: fehlen die neuen Preferences-Keys
+  (`ak2_%d`/`pw2_%d`/`mo2_%d`/`ak3_%d`/`pw3_%d`/`mo3_%d`), werden Konfig 2/3
+  als "nicht verwendet" geladen (255/255/0) – bestehende Konfiguration
+  (Konfig 1) bleibt unangetastet.
+- `/api/status` und `/api/output` um `kanal2/pwm2/mode2` bzw.
+  `kanal3/pwm3/mode3` je Ausgang erweitert; Konfigurations-Export/-Import
+  (WiFi-Tab) sichert/lädt jetzt ebenfalls alle 3 Konfigurationen je
+  Ausgang.
+- Versionsstring in der CRSF-INFO-Antwort auf "v3.10 ESP32" aktualisiert.
+- **Nicht verändert**: Einzelkanal-/MKan-Auswertung (v3.00), CRSF-LUA-Menü,
+  Hardware-Pinbelegung.
+- **Hinweis**: in der Sandbox nur per Code-Review/Konsistenzcheck geprüft –
+  nicht kompiliert, geflasht oder auf echter Hardware getestet.
+
+## Änderungen v3.00 (MKan-Mehrfachadress-Erweiterung)
+
+Konzept und Vorbild aus dem Soundmodul-Projekt (`ESP32-RC-Sound`,
+`firmware-v7`, dort `config.h`/`ESP32-RC-Sound.ino`, Quelltyp "MKan" 80-95).
+
+- **Neu: 2 zusätzliche, unabhängige Kanalquellen "MKan1"/"MKan2"** – zusätzlich
+  zur bestehenden Einzelkanal-Adresse (Modul-Adresse/Einkanal-Modus,
+  unverändert) können die 8 Ausgänge jetzt auch an eine von 2 weiteren,
+  frei konfigurierbaren 8-Bit-Kanalquellen gebunden werden (macht 24 statt
+  8 unabhängige Trigger-Bits verfügbar).
+  - **CRSF**: je Gruppe eine frei wählbare Busadresse (`MWset4`/`MWset4m`,
+    dasselbe Multiswitch-Protokoll wie die bestehende Modul-Adresse) –
+    einstellbar in der Web-UI, Karte "MKan-Gruppen (V3)".
+  - **SBUS**: je Gruppe ein fest zugewiesener SBUS-Kanal + eigener Modus
+    (Normal oder amplituden-codiert "WM Adr 0-3", gleiche Logik wie beim
+    bestehenden Einkanal-Modus).
+- **Pro Ausgang** in der Kanalquellen-Auswahl (Web-UI) sowie im
+  CRSF-LUA-Menü ("Ausgang-Quelle") um die Optionen "MKan1"/"MKan2" (je
+  Bit 1-8) erweitert. Die beiden Gruppenadressen/-kanäle selbst sind
+  **aktuell nur über die Web-UI** konfigurierbar, nicht über das LUA-Menü.
+- NVS-Migration ohne Handeingriff: fehlen die neuen Preferences-Keys (z.B.
+  beim ersten Boot auf einem zuvor mit v2.xx betriebenen Board), werden
+  alle Gruppen als "aus" geladen (255/999/0) – bestehende Konfiguration
+  bleibt unangetastet.
+- Versionsstring in der CRSF-INFO-Antwort ("v1.42 ESP32", seit v2.xx nicht
+  mehr synchron mit der numerischen Version) auf "v3.00 ESP32" korrigiert.
+- **Nicht verändert**: Output-Timing/Blink-Logik, bestehende Einzelkanal-
+  Auswertung, Hardware-Pinbelegung, PWM/MWprop.
+- **Hinweis**: in der Sandbox nur per Code-Review/Konsistenzcheck geprüft –
+  nicht kompiliert, geflasht oder auf echter Hardware getestet.
+
+## Änderungen v2.02 (WLAN-Parity zum Soundmodul-Projekt, ESP32-RC-Sound v7.16)
+
+Bringt die WLAN-Optionen auf denselben Stand wie das Soundmodul-Projekt (dortiges Feature "WLAN dauerhaft an", seit v7.16):
+
+- **Neu: "WLAN dauerhaft aktiv"** (WiFi-Tab, Default AN): schaltet den Access Point beim Booten immer ein und nie wieder aus – unabhängig vom GPIO13-Bootpin und unabhängig vom Auto-Failsafe. Wirkt erst ab dem nächsten Neustart, kein sofortiges Einschalten aus dem Web- oder CRSF-Handler heraus (bewusst so, siehe Soundmodul-Lehre seit v7.15: ein WLAN-Start zur Laufzeit direkt aus einem Parameter-Handler ist unnötiges Risiko). Auch für Bestandsgeräte beim ersten Boot nach dem Update automatisch AN (NVS-Migrationsdefault).
+- **Neu: CRSF/Lua-Menü für WLAN-Einstellungen** – bisher nur über die Weboberfläche erreichbar, jetzt auch per Sender-Lua-Skript: neuer Ordner "WLAN" (Feld 77) mit den Kindern "Auto-Failsafe" (78), "Auto Timeout" (79) und "Dauerhaft an" (80). Als eigenständiger, neu angehängter Ordner statt Umbau der bestehenden Felder 0–76, damit bestehende Radio-Profile mit festen Feld-IDs weiterlaufen.
+- **v2.01 (zuvor):** bestehender Schalter "Auto bei Signalverlust" (g_wifi_auto) auf Default AN umgestellt.
 
 ## Änderungen v2.00 (übertragen aus dem Soundmodul-Projekt, ESP32-RC-Sound v7)
 
@@ -14,7 +92,7 @@ Diese Version übernimmt mehrere seit v1.42 im Soundmodul-Projekt gesammelte CRS
 - **`updateDevice_Info()` abgesichert** gegen zu kurze/kaputte DEVICE_INFO-Frames (signed-Rechnung + Mindestlängen-Check statt möglichem Unsigned-Unterlauf)
 - **Zieladressen-Prüfung bei `CRSF_FRAMETYPE_COMMAND`**, analog zu PING/PARAMETER_READ/WRITE (mit Broadcast-Ausnahme fürs WM-Protokoll, das weiterhin per Broadcast + Payload-Adresse filtert)
 - **Konfiguration exportieren/importieren** als JSON-Datei über den Browser (WiFi-Tab → "Konfiguration sichern/wiederherstellen") – sichert alle 8 Ausgänge + globale Einstellungen, Import fragt vor dem Überschreiben (inkl. WLAN-Zugangsdaten) nach Bestätigung
-- **WLAN-Auto-Failsafe** (WiFi-Tab, Default AUS): schaltet den Access Point automatisch ein, wenn über eine einstellbare Zeit (5–240 s) kein gültiges RC-Signal anliegt – z. B. wenn kein Sender gebunden ist. Schaltet nie automatisch wieder aus; ergänzend gibt es jetzt auch einen manuellen "WLAN jetzt ein/aus"-Schalter, der ohne Neustart sofort wirkt
+- **WLAN-Auto-Failsafe** (WiFi-Tab, **Default AN seit v2.01**): schaltet den Access Point automatisch ein, wenn über eine einstellbare Zeit (5–240 s) kein gültiges RC-Signal anliegt – z. B. wenn kein Sender gebunden ist. Schaltet nie automatisch wieder aus; ergänzend gibt es jetzt auch einen manuellen "WLAN jetzt ein/aus"-Schalter, der ohne Neustart sofort wirkt
 - **Firmware-Update per WLAN (OTA)** (WiFi-Tab → "Firmware-Update (OTA)"): eine mit der Arduino-IDE gebaute `.bin`-Datei wird direkt im Browser hochgeladen und landet im gerade inaktiven OTA-Flash-Segment – Ausbauen und USB-Flashen ist für spätere Updates damit nicht mehr nötig. Schlägt der Upload fehl oder wird er abgebrochen, bootet das Modul unverändert mit der bisherigen Firmware weiter (kein Bricking-Risiko). **Voraussetzung:** einmalig ein OTA-fähiges Partitionsschema per USB flashen, siehe Abschnitt "Partitionsschema (Voraussetzung für OTA)" unten
 - **Aufräumen**: `eeprom_esp32.h`, `hal_esp32.h`, `output_ctrl.h` sind weiterhin nicht in `MultiSwitch_ESP32.ino` eingebunden (Rest eines nicht gemergten Refactorings) – jetzt oben in den Dateien selbst klar als unbenutzt gekennzeichnet, damit das nicht zu Verwirrung führt
 
@@ -107,7 +185,7 @@ SSID: `MultiSwitch` / Passwort: `123456789`
 | GET | `/api/status` | Aktueller Status (Ausgänge, Kanäle, MWprop, CRSF-Diagnose, AP-Status) |
 | GET/POST | `/api/config` | Konfiguration lesen/schreiben (inkl. WLAN-Auto-Failsafe) |
 | POST | `/api/switch` | Ausgang manuell schalten / freigeben |
-| POST | `/api/output` | Ausgangs-Konfiguration (Kanal, PWM, Blink-Modus, Name) |
+| POST | `/api/output` | Ausgangs-Konfiguration (Kanal, PWM, Blink-Modus, Name) – *seit v3.10:* je Ausgang bis zu 3 Konfigurationen (`kanal/pwm/mode`, `kanal2/pwm2/mode2`, `kanal3/pwm3/mode3`) |
 | POST | `/api/wifi` | *(NEU v2.00)* Access Point sofort ein-/ausschalten, ohne Neustart |
 | POST | `/api/save` | *(NEU v2.00)* Konfiguration sofort auf Flash schreiben, ohne Neustart |
 | POST | `/api/otaupdate` | *(NEU v2.00)* Firmware-Update per WLAN hochladen (multipart/form-data, `.bin`-Datei) – startet das Modul bei Erfolg neu |

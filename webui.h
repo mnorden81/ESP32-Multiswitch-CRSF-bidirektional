@@ -1,5 +1,11 @@
 /*
- * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch  v2.00
+ * webui.h  –  WiFi-Weboberfläche für ESP32-MultiSwitch  v3.10
+ * NEU V3.00: MKan-Gruppen (2 zusaetzliche, unabhaengige Kanalquellen) -
+ * siehe Kommentar bei MULTISW_NUM_GROUPS in MultiSwitch_ESP32_V3.ino.
+ * NEU V3.10: bis zu 3 Konfigurationen (Kanal-Quelle + Blink/PWM) pro
+ * Ausgang, Prioritaet Konfig1 > Konfig2 > Konfig3 - siehe evalSlotActive()/
+ * Output() in MultiSwitch_ESP32_V3.ino. Konfig 2/3 sind bewusst NUR hier in
+ * der Web-UI verfuegbar, nicht im CRSF-LUA-Menue (siehe README).
  */
 
 #pragma once
@@ -23,6 +29,15 @@ extern int           modul_adress;
 extern int           Ausgang_Kanal[8];
 extern int           pwm_wert[8];
 extern int           mode[8];
+extern int           Ausgang_Kanal2[8];         // NEU V3.10: Konfig 2 pro Ausgang
+extern int           pwm_wert2[8];              // NEU V3.10: Konfig 2 pro Ausgang
+extern int           mode2[8];                  // NEU V3.10: Konfig 2 pro Ausgang
+extern int           Ausgang_Kanal3[8];         // NEU V3.10: Konfig 3 pro Ausgang
+extern int           pwm_wert3[8];              // NEU V3.10: Konfig 3 pro Ausgang
+extern int           mode3[8];                  // NEU V3.10: Konfig 3 pro Ausgang
+extern int           EK_Gruppen_Adresse[2];      // NEU V3.00: MKan
+extern int           SBUS_Gruppen_Channel[2];    // NEU V3.00: MKan
+extern int           SBUS_Gruppen_Mode[2];       // NEU V3.00: MKan
 extern char          Ausgang_Name[8][17];
 extern uint16_t      channel_output[16];
 extern uint16_t      einkanal_Data;
@@ -41,6 +56,7 @@ extern void          nvsSave();
 extern void          nvsReset();
 extern bool          g_wifi_auto;          // NEU v2.00
 extern uint16_t      g_wifi_auto_timeout;  // NEU v2.00
+extern bool          g_wifi_always_on;     // NEU v2.02
 
 // ============================================================
 //  Debug
@@ -276,6 +292,82 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
 
       <span style="color:var(--sub);font-size:12px;display:block;margin-top:6px" id="rc-hint"></span>
     </div>
+
+    <!-- MKan-Gruppen (NEU V3.00): 2 zusaetzliche, unabhaengige Kanalquellen -->
+    <div class="card">
+      <div class="card-title">MKan-Gruppen (V3)</div>
+
+      <div class="row" id="row-mkan-adr0" style="display:none"><label>MKan Gruppe 1 Adresse</label>
+        <select id="sel-mkan-adr0" onchange="onMkanChange(0)">
+          <option value="255">Aus</option>
+          <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+          <option value="6">6</option><option value="7">7</option><option value="8">8</option>
+          <option value="9">9</option><option value="10">10</option><option value="11">11</option>
+          <option value="12">12</option><option value="13">13</option><option value="14">14</option>
+          <option value="15">15</option><option value="16">16</option><option value="17">17</option>
+          <option value="18">18</option><option value="19">19</option><option value="20">20</option>
+        </select>
+      </div>
+      <div class="row" id="row-mkan-adr1" style="display:none"><label>MKan Gruppe 2 Adresse</label>
+        <select id="sel-mkan-adr1" onchange="onMkanChange(1)">
+          <option value="255">Aus</option>
+          <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option><option value="5">5</option>
+          <option value="6">6</option><option value="7">7</option><option value="8">8</option>
+          <option value="9">9</option><option value="10">10</option><option value="11">11</option>
+          <option value="12">12</option><option value="13">13</option><option value="14">14</option>
+          <option value="15">15</option><option value="16">16</option><option value="17">17</option>
+          <option value="18">18</option><option value="19">19</option><option value="20">20</option>
+        </select>
+      </div>
+
+      <div class="row" id="row-mkan-ch0" style="display:none"><label>MKan Gruppe 1 SBUS-Kanal</label>
+        <select id="sel-mkan-ch0" onchange="onMkanChange(0)">
+          <optgroup label="SBUS Kanal">
+            <option value="0">SBUS Kanal 01</option><option value="1">SBUS Kanal 02</option>
+            <option value="2">SBUS Kanal 03</option><option value="3">SBUS Kanal 04</option>
+            <option value="4">SBUS Kanal 05</option><option value="5">SBUS Kanal 06</option>
+            <option value="6">SBUS Kanal 07</option><option value="7">SBUS Kanal 08</option>
+            <option value="8">SBUS Kanal 09</option><option value="9">SBUS Kanal 10</option>
+            <option value="10">SBUS Kanal 11</option><option value="11">SBUS Kanal 12</option>
+            <option value="12">SBUS Kanal 13</option><option value="13">SBUS Kanal 14</option>
+            <option value="14">SBUS Kanal 15</option><option value="15">SBUS Kanal 16</option>
+          </optgroup>
+          <optgroup label="Optionen"><option value="999">Deaktiviert</option></optgroup>
+        </select>
+      </div>
+      <div class="row" id="row-mkan-mode0" style="display:none"><label>MKan Gruppe 1 Modus</label>
+        <select id="sel-mkan-mode0" onchange="onMkanChange(0)">
+          <option value="0">Normal</option>
+          <option value="10">SBUS WM Adr 0</option><option value="11">SBUS WM Adr 1</option>
+          <option value="12">SBUS WM Adr 2</option><option value="13">SBUS WM Adr 3</option>
+        </select>
+      </div>
+      <div class="row" id="row-mkan-ch1" style="display:none"><label>MKan Gruppe 2 SBUS-Kanal</label>
+        <select id="sel-mkan-ch1" onchange="onMkanChange(1)">
+          <optgroup label="SBUS Kanal">
+            <option value="0">SBUS Kanal 01</option><option value="1">SBUS Kanal 02</option>
+            <option value="2">SBUS Kanal 03</option><option value="3">SBUS Kanal 04</option>
+            <option value="4">SBUS Kanal 05</option><option value="5">SBUS Kanal 06</option>
+            <option value="6">SBUS Kanal 07</option><option value="7">SBUS Kanal 08</option>
+            <option value="8">SBUS Kanal 09</option><option value="9">SBUS Kanal 10</option>
+            <option value="10">SBUS Kanal 11</option><option value="11">SBUS Kanal 12</option>
+            <option value="12">SBUS Kanal 13</option><option value="13">SBUS Kanal 14</option>
+            <option value="14">SBUS Kanal 15</option><option value="15">SBUS Kanal 16</option>
+          </optgroup>
+          <optgroup label="Optionen"><option value="999">Deaktiviert</option></optgroup>
+        </select>
+      </div>
+      <div class="row" id="row-mkan-mode1" style="display:none"><label>MKan Gruppe 2 Modus</label>
+        <select id="sel-mkan-mode1" onchange="onMkanChange(1)">
+          <option value="0">Normal</option>
+          <option value="10">SBUS WM Adr 0</option><option value="11">SBUS WM Adr 1</option>
+          <option value="12">SBUS WM Adr 2</option><option value="13">SBUS WM Adr 3</option>
+        </select>
+      </div>
+      <span style="color:var(--sub);font-size:12px;display:block;margin-top:6px">Zusaetzlich zur Einzelkanal-Adresse oben: bis zu 16 weitere, unabhaengige Trigger-Bits fuer die Ausgangs-Kanalquelle "MKan1"/"MKan2".</span>
+    </div>
   </div>
 
   <!-- WiFi -->
@@ -290,6 +382,16 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
           pattern="^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$">
       </div>
       <button class="btn btn-primary" style="margin-top:8px" onclick="saveWifi()">Speichern &amp; Neustart</button>
+    </div>
+    <div class="card">
+      <div class="card-title">WLAN dauerhaft aktiv (empfohlen, NEU v2.02)</div>
+      <div class="row"><label>Dauerhaft an</label>
+        <select id="sel-wifi-always" onchange="onWifiAlwaysOnChange()">
+          <option value="0">Aus</option>
+          <option value="1">Ein</option>
+        </select>
+      </div>
+      <span style="color:var(--sub);font-size:12px;display:block">Schaltet den Access Point beim Booten immer ein und nie wieder aus - unabh&auml;ngig vom Bootpin (GPIO13) und vom Auto-Failsafe unten. Wirkt erst nach dem n&auml;chsten Neustart. Default AN.</span>
     </div>
     <div class="card">
       <div class="card-title">WLAN jetzt (NEU v2.00)</div>
@@ -308,6 +410,7 @@ main{max-width:560px;margin:0 auto;padding:20px 14px 60px}
         <input type="number" id="inp-wifi-auto-to" min="5" max="240" step="1" onchange="saveWifiAuto()">
       </div>
       <span style="color:var(--sub);font-size:12px;display:block">Schaltet den Access Point automatisch ein, wenn so lange kein g&uuml;ltiges RC-Signal anliegt (z.&nbsp;B. Sender aus). Schaltet nie automatisch wieder aus.</span>
+      <span id="wifi-auto-overridden-hint" style="color:var(--yellow);font-size:12px;display:none;margin-top:4px">&#9888; Wirkungslos, solange "WLAN dauerhaft aktiv" oben eingeschaltet ist - der AP l&auml;uft dann bereits seit dem Booten.</span>
     </div>
     <div class="card">
       <div class="card-title">Konfiguration sichern/wiederherstellen (NEU v2.00)</div>
@@ -441,53 +544,64 @@ function showOut(i){
   if(state.outputs) renderOutDetail(state,i);
   fetchStatus();
 }
-function renderOutDetail(d,i){
-  const o=d.outputs[i];
-  $('out-title').textContent=o.name;
-  const sb=$('out-state-big');
-  sb.textContent=o.on?'AN':'AUS';
-  sb.className='state-big '+(o.on?'state-on':'state-off');
-  const isCrsf=(state&&state.rc_system_boot===4);
-
-  // Kanal-Quelle (Einzelkanal/Kanal_L/Kanal_H) - gleich fuer CRSF und SBUS
-  const kv=o.kanal;
-  const kSel=(kv>=40)?2:(kv>=20)?1:0;
+// NEU V3.10: Kanal-Quelle-Dropdown fuer einen Slot (1/2/3) aufbauen. Slot 2/3
+// bekommen zusaetzlich die Option "Nicht verwendet" (255) - Konfig1 ist immer
+// aktiv, Konfig2/3 sind optional (siehe evalSlotActive() in der .ino: k=255
+// matched keinen der Bereiche und ist damit automatisch "nie aktiv").
+function kanalOptionsHtml(slot,val){
   const kGrp=[{l:'Einzelkanal',v:Array.from({length:8},(_,n)=>n)},
               {l:'Kanal_L (<800)',v:Array.from({length:16},(_,n)=>20+n)},
-              {l:'Kanal_H (>1200)',v:Array.from({length:16},(_,n)=>40+n)}];
-  let kHtml='<select id="sel-kanal" style="width:100%" onchange="saveOutKanal()">';
+              {l:'Kanal_H (>1200)',v:Array.from({length:16},(_,n)=>40+n)},
+              {l:'MKan1',v:Array.from({length:8},(_,n)=>80+n)},   // NEU V3.00
+              {l:'MKan2',v:Array.from({length:8},(_,n)=>88+n)}];  // NEU V3.00
+  let h=`<select id="sel-kanal${slot}" style="width:100%" onchange="saveOutKanal(${slot})">`;
+  if(slot>1){
+    h+=`<optgroup label="Optionen"><option value="255"${val===255?' selected':''}>Nicht verwendet</option></optgroup>`;
+  }
   kGrp.forEach(g=>{
-    kHtml+=`<optgroup label="${g.l}">`;
-    g.v.forEach(v=>{
-      const n=((v%20)+1).toString().padStart(2,'0');
-      kHtml+=`<option value="${v}"${o.kanal===v?' selected':''}>${g.l.split(' ')[0]} ${n}</option>`;
+    h+=`<optgroup label="${g.l}">`;
+    // NEU V3.00: Nummerierung ueber die Position IN der Gruppe (idx), nicht
+    // mehr ueber v%20 - das war nur zufaellig korrekt, solange alle Gruppen
+    // bei einem Vielfachen von 20 anfingen (MKan2 beginnt bei 88).
+    g.v.forEach((v,idx)=>{
+      const n=(idx+1).toString().padStart(2,'0');
+      h+=`<option value="${v}"${val===v?' selected':''}>${g.l.split(' ')[0]} ${n}</option>`;
     });
-    kHtml+='</optgroup>';
+    h+='</optgroup>';
   });
-  kHtml+='</select>';
+  h+='</select>';
+  return h;
+}
 
-  // Blink-Modus
+// NEU V3.10: kompletten Konfig-Block (Kanal/Blink/PWM) fuer einen Slot
+// (1/2/3) eines Ausgangs aufbauen - Slot 1 = bisheriges Verhalten (immer
+// aktiv), Slot 2/3 = zusaetzliche, optionale Konfigurationen mit eigener
+// Kanal-Quelle. Prioritaet bei mehreren aktiven Slots: 1 > 2 > 3 (siehe
+// Output() in der .ino).
+function buildSlotConfigHtml(slot,i,kanalVal,modeVal,pwmVal,isCrsf){
+  const kHtml=kanalOptionsHtml(slot,kanalVal);
+
   const bv=[[0,'Dauerlicht'],[1,'0,01s'],[2,'0,02s'],[3,'0,03s'],[5,'0,05s'],
     [10,'0,1s'],[25,'0,25s'],[50,'0,5s'],[75,'0,75s'],[100,'1s'],
     [150,'1,5s'],[200,'2s'],[210,'2,1s'],[220,'2,2s'],[230,'2,3s'],[240,'2,4s'],[250,'2,5s']];
-  const mInt=o.mode||0;
+  const mInt=modeVal||0;
   const mH=(mInt>>8)&0xFF, mL=mInt&0xFF;
-  let mAnHtml='<select id="sel-mode-an" style="width:100%" onchange="saveOutMode()">';
+  let mAnHtml=`<select id="sel-mode-an${slot}" style="width:100%" onchange="saveOutMode(${slot})">`;
   bv.forEach(([v,l])=>mAnHtml+=`<option value="${v}"${mH===v?' selected':''}>${v===0?l:'Blinken '+l+' an'}</option>`);
   mAnHtml+='</select>';
   let mAusRow='';
   if(mH>0){
-    let h='<select id="sel-mode-aus" style="width:100%" onchange="saveOutMode()">';
+    let h=`<select id="sel-mode-aus${slot}" style="width:100%" onchange="saveOutMode(${slot})">`;
     bv.filter(([v])=>v>0).forEach(([v,l])=>h+=`<option value="${v}"${mL===v?' selected':''}>${'Blinken '+l+' aus'}</option>`);
     h+='</select>';
     mAusRow=`<div class="row"><label>Blink AUS-Zeit</label>${h}</div>`;
   }
 
   // PWM-Quelle: MWprop nur bei CRSF
-  const pwm=o.pwm;
+  const pwm=pwmVal;
   const isMW=(pwm>=200&&pwm<=207);
   const isFest=!isMW;
-  let pHtml='<select id="sel-pwm-src" style="width:100%" onchange="saveOutPwmSrc()">';
+  let pHtml=`<select id="sel-pwm-src${slot}" style="width:100%" onchange="saveOutPwmSrc(${slot})">`;
   pHtml+=`<option value="255"${isFest&&pwm===255?' selected':''}>Festwert (0-255)</option>`;
   if(isCrsf){
     pHtml+=`<option value="${200+i}"${isMW?' selected':''}>MWprop (Kanal=${i+1}, auto)</option>`;
@@ -496,47 +610,83 @@ function renderOutDetail(d,i){
 
   // PWM-Slider (bei Festwert)
   const sv=isFest?pwm:255;
-  const slRow=isFest?`<div class="row"><label>PWM-Wert: <b id="pwm-val">${sv}</b></label>
+  const slRow=isFest?`<div class="row"><label>PWM-Wert: <b id="pwm-val${slot}">${sv}</b></label>
     <input type="range" min="0" max="255" step="5" value="${sv}" style="width:100%;margin-top:4px"
-      oninput="$('pwm-val').textContent=this.value" onchange="saveOutPwm(this.value)"></div>`:'';
+      oninput="$('pwm-val${slot}').textContent=this.value" onchange="saveOutPwm(${slot},this.value)"></div>`:'';
 
-  $('out-cfg').innerHTML=`
-    <div class="card-title">Konfiguration – ${o.name}</div>
+  return `
     <div class="row"><label>Kanal-Quelle</label>${kHtml}</div>
     <div class="row"><label>Blink AN-Zeit</label>${mAnHtml}</div>
     ${mAusRow}
     <div class="row"><label>PWM-Quelle</label>${pHtml}</div>
-    ${slRow}
+    ${slRow}`;
+}
+
+function renderOutDetail(d,i){
+  const o=d.outputs[i];
+  $('out-title').textContent=o.name;
+  const sb=$('out-state-big');
+  sb.textContent=o.on?'AN':'AUS';
+  sb.className='state-big '+(o.on?'state-on':'state-off');
+  const isCrsf=(state&&state.rc_system_boot===4);
+
+  // NEU V3.10: bis zu 3 Konfigurationen pro Ausgang, Prioritaet 1>2>3 -
+  // Konfig1 = bisheriges kanal/mode/pwm, Konfig2/3 = kanal2/mode2/pwm2 bzw.
+  // kanal3/mode3/pwm3 (jeweils optional, Default "Nicht verwendet"=255).
+  const slot1Html=buildSlotConfigHtml(1,i,o.kanal,o.mode,o.pwm,isCrsf);
+  const slot2Html=buildSlotConfigHtml(2,i,o.kanal2,o.mode2,o.pwm2,isCrsf);
+  const slot3Html=buildSlotConfigHtml(3,i,o.kanal3,o.mode3,o.pwm3,isCrsf);
+
+  $('out-cfg').innerHTML=`
+    <div class="card-title">Konfig 1 – ${o.name} (h&ouml;chste Priorit&auml;t)</div>
+    ${slot1Html}
+    <hr class="sep">
+    <div class="card-title">Konfig 2 (optional)</div>
+    ${slot2Html}
+    <hr class="sep">
+    <div class="card-title">Konfig 3 (optional, niedrigste Priorit&auml;t)</div>
+    ${slot3Html}
+    <hr class="sep">
     <div class="row"><label>Override</label><span>${o.override?'<b>Aktiv</b>':'Inaktiv'}</span></div>
     <div class="row" style="margin-top:6px">
       <button class="btn btn-primary" onclick="saveOutName()">Name ändern</button>
     </div>`;
 }
-async function saveOutKanal(){
+// NEU V3.10: slot 1/2/3 -> jeweils eigenes JSON-Feld (kanal/kanal2/kanal3)
+function slotField(base,slot){ return slot===1?base:base+slot; }
+async function saveOutKanal(slot){
   if(curOut<0)return;
+  const body={ch:curOut};
+  body[slotField('kanal',slot)]=parseInt($('sel-kanal'+slot).value);
   await api('/api/output',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ch:curOut,kanal:parseInt($('sel-kanal').value)})});
+    body:JSON.stringify(body)});
   fetchStatus();
 }
-async function saveOutMode(){
+async function saveOutMode(slot){
   if(curOut<0)return;
-  const an=parseInt($('sel-mode-an').value);
-  const ausEl=$('sel-mode-aus');
+  const an=parseInt($('sel-mode-an'+slot).value);
+  const ausEl=$('sel-mode-aus'+slot);
   const aus=ausEl?parseInt(ausEl.value):an;
+  const body={ch:curOut};
+  body[slotField('mode',slot)]=(an<<8)|aus;
   await api('/api/output',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ch:curOut,mode:(an<<8)|aus})});
+    body:JSON.stringify(body)});
   fetchStatus();
 }
-async function saveOutPwmSrc(){
+async function saveOutPwmSrc(slot){
   if(curOut<0)return;
+  const body={ch:curOut};
+  body[slotField('pwm',slot)]=parseInt($('sel-pwm-src'+slot).value);
   await api('/api/output',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ch:curOut,pwm:parseInt($('sel-pwm-src').value)})});
+    body:JSON.stringify(body)});
   fetchStatus();
 }
-async function saveOutPwm(val){
+async function saveOutPwm(slot,val){
   if(curOut<0)return;
+  const body={ch:curOut};
+  body[slotField('pwm',slot)]=parseInt(val);
   await api('/api/output',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ch:curOut,pwm:parseInt(val)})});
+    body:JSON.stringify(body)});
 }
 async function saveOutName(){
   if(curOut<0)return;
@@ -577,12 +727,21 @@ async function fetchConfig(){
   $('sel-ek').value=(ek===999)?0:ek;
   // CRSF: Modul-Adresse
   $('sel-adr').value=d.modul_adress;
+  // NEU V3.00: MKan-Gruppen
+  $('sel-mkan-adr0').value=d.ek_gadr0;
+  $('sel-mkan-adr1').value=d.ek_gadr1;
+  $('sel-mkan-ch0').value=d.sbus_gch0;
+  $('sel-mkan-mode0').value=d.sbus_gmode0;
+  $('sel-mkan-ch1').value=d.sbus_gch1;
+  $('sel-mkan-mode1').value=d.sbus_gmode1;
   $('inp-dnam').value=d.dnam;
   $('inp-ssid').value=d.ssid;
   $('inp-pass').value=d.pass;
   $('inp-ip').value=d.ip;
   $('sel-wifi-auto').value=d.wifi_auto?1:0;
   $('inp-wifi-auto-to').value=d.wifi_auto_timeout;
+  $('sel-wifi-always').value=d.wifi_always_on?1:0;
+  updateWifiAlwaysOnHint();
   updateRcRows(d.rc_system, ek);
   window._rcBoot=parseInt(d.rc_system);
 }
@@ -595,6 +754,13 @@ function updateRcRows(rc, ek){
   $('row-sbus-ch').style.display=isCrsf?'none':'';
   $('row-ek').style.display=(isCrsf||!ekAktiv)?'none':'';
   $('row-adr').style.display=isCrsf?'':'none';
+  // NEU V3.00: MKan-Gruppen - Adresse bei CRSF, Kanal+Modus bei SBUS
+  $('row-mkan-adr0').style.display=isCrsf?'':'none';
+  $('row-mkan-adr1').style.display=isCrsf?'':'none';
+  $('row-mkan-ch0').style.display=isCrsf?'none':'';
+  $('row-mkan-mode0').style.display=isCrsf?'none':'';
+  $('row-mkan-ch1').style.display=isCrsf?'none':'';
+  $('row-mkan-mode1').style.display=isCrsf?'none':'';
 }
 
 // RC-System Wechsel: sofort speichern, bei SBUS<->CRSF Wechsel: Neustart
@@ -647,6 +813,19 @@ async function onAdrChange(){
   await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({modul_adress:parseInt($('sel-adr').value)})});
 }
+// NEU V3.00: MKan-Gruppe g (0 oder 1) - Adresse (CRSF) bzw. Kanal+Modus (SBUS)
+async function onMkanChange(g){
+  const isCrsf=(parseInt($('sel-rc').value)===4);
+  const body={};
+  if(isCrsf){
+    body['ek_gadr'+g]=parseInt($('sel-mkan-adr'+g).value);
+  } else {
+    body['sbus_gch'+g]=parseInt($('sel-mkan-ch'+g).value);
+    body['sbus_gmode'+g]=parseInt($('sel-mkan-mode'+g).value);
+  }
+  await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)});
+}
 async function saveRc(){} // nicht mehr per Button benoetigt
 async function saveWifi(){
   const ip=$('inp-ip').value.trim();
@@ -683,6 +862,19 @@ async function saveWifiAuto(){
     })});
 }
 
+// ─── WLAN dauerhaft aktiv (NEU v2.02) ──────────────────────────────────
+// Rein persistierend, wirkt erst ab dem naechsten Neustart (siehe
+// webui_init()/wifiFailsafeCheck() in der .ino) - bewusst kein sofortiges
+// toggleWifi() hier, analog zum Soundmodul-Projekt seit dessen v7.15.
+async function onWifiAlwaysOnChange(){
+  await api('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({wifi_always_on:$('sel-wifi-always').value==='1'})});
+  updateWifiAlwaysOnHint();
+}
+function updateWifiAlwaysOnHint(){
+  $('wifi-auto-overridden-hint').style.display=($('sel-wifi-always').value==='1')?'block':'none';
+}
+
 // ─── Konfiguration Export/Import (NEU v2.00) ──────────────────────────
 // Export: liest /api/config (globale Einstellungen) + /api/status (Ausgänge)
 // und bietet das Ergebnis als Datei zum Download an - ganz normaler
@@ -695,7 +887,9 @@ async function exportConfig(){
   const data={
     device:'ESP32-MultiSwitch', version:st.version||'', exported:new Date().toISOString(),
     settings:cfg,
-    outputs:st.outputs.map((o,i)=>({ch:i,name:o.name,kanal:o.kanal,pwm:o.pwm,mode:o.mode}))
+    outputs:st.outputs.map((o,i)=>({ch:i,name:o.name,kanal:o.kanal,pwm:o.pwm,mode:o.mode,
+      kanal2:o.kanal2,pwm2:o.pwm2,mode2:o.mode2,     // NEU V3.10
+      kanal3:o.kanal3,pwm3:o.pwm3,mode3:o.mode3}))   // NEU V3.10
   };
   const text=JSON.stringify(data,null,2);
   let name='multiswitch-config';
@@ -737,12 +931,15 @@ async function importConfigData(data){
     body:JSON.stringify({
       rc_system:s.rc_system, crsf_channel:s.crsf_channel, einkanal_mode:s.einkanal_mode,
       modul_adress:s.modul_adress, dnam:s.dnam, ssid:s.ssid, pass:s.pass, ip:s.ip,
-      wifi_auto:s.wifi_auto, wifi_auto_timeout:s.wifi_auto_timeout
+      wifi_auto:s.wifi_auto, wifi_auto_timeout:s.wifi_auto_timeout,
+      wifi_always_on:s.wifi_always_on
     })});
   for(const o of (data.outputs||[])){
     if(o.ch===undefined) continue;
     await api('/api/output',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ch:o.ch,kanal:o.kanal,pwm:o.pwm,mode:o.mode,name:o.name})});
+      body:JSON.stringify({ch:o.ch,kanal:o.kanal,pwm:o.pwm,mode:o.mode,name:o.name,
+        kanal2:o.kanal2,pwm2:o.pwm2,mode2:o.mode2,     // NEU V3.10
+        kanal3:o.kanal3,pwm3:o.pwm3,mode3:o.mode3})}); // NEU V3.10
   }
   await api('/api/save',{method:'POST'});
   alert('Konfiguration importiert. Seite wird neu geladen…');
@@ -983,7 +1180,14 @@ static void handleStatus() {
         j += "\"pwm\":"   + String(pwm_wert[i]) + ",";
         char mhex[6]; snprintf(mhex, sizeof(mhex), "0x%04X", mode[i]);
         j += "\"mode_hex\":\"" + String(mhex) + "\",";
-        j += "\"mode\":" + String(mode[i]);
+        j += "\"mode\":" + String(mode[i]) + ",";
+        // NEU V3.10: Konfig 2/3 pro Ausgang (optional, Prioritaet 1>2>3)
+        j += "\"kanal2\":" + String(Ausgang_Kanal2[i]) + ",";
+        j += "\"pwm2\":"   + String(pwm_wert2[i]) + ",";
+        j += "\"mode2\":"  + String(mode2[i]) + ",";
+        j += "\"kanal3\":" + String(Ausgang_Kanal3[i]) + ",";
+        j += "\"pwm3\":"   + String(pwm_wert3[i]) + ",";
+        j += "\"mode3\":"  + String(mode3[i]);
         j += "}";
     }
     j += "],";
@@ -1023,12 +1227,19 @@ static void handleConfig() {
         j += "\"crsf_channel\":"  + String(CRSF_Channel)   + ",";
         j += "\"einkanal_mode\":" + String(einkanal_mode)  + ",";
         j += "\"modul_adress\":"  + String(modul_adress)   + ",";
+        j += "\"ek_gadr0\":"    + String(EK_Gruppen_Adresse[0])   + ",";  // NEU V3.00
+        j += "\"ek_gadr1\":"    + String(EK_Gruppen_Adresse[1])   + ",";  // NEU V3.00
+        j += "\"sbus_gch0\":"   + String(SBUS_Gruppen_Channel[0]) + ",";  // NEU V3.00
+        j += "\"sbus_gch1\":"   + String(SBUS_Gruppen_Channel[1]) + ",";  // NEU V3.00
+        j += "\"sbus_gmode0\":" + String(SBUS_Gruppen_Mode[0])    + ",";  // NEU V3.00
+        j += "\"sbus_gmode1\":" + String(SBUS_Gruppen_Mode[1])    + ",";  // NEU V3.00
       j += "\"dnam\":\""        + jsonEscape(g_device_name)  + "\",";
       j += "\"ssid\":\""        + jsonEscape(g_wifi_ssid)    + "\",";
       j += "\"pass\":\""        + jsonEscape(g_wifi_pass)    + "\",";
       j += "\"ip\":\""          + jsonEscape(g_wifi_ip)      + "\",";
         j += "\"wifi_auto\":"      + String(g_wifi_auto ? "true" : "false") + ",";
-        j += "\"wifi_auto_timeout\":" + String(g_wifi_auto_timeout);
+        j += "\"wifi_auto_timeout\":" + String(g_wifi_auto_timeout) + ",";
+        j += "\"wifi_always_on\":" + String(g_wifi_always_on ? "true" : "false");
         j += "}";
         sendJson(j);
         return;
@@ -1056,6 +1267,31 @@ static void handleConfig() {
       v = constrain(v, 0, 20);
       if (v != modul_adress) { modul_adress = v; changed = true; }
     }
+    // NEU V3.00: MKan-Gruppen (CRSF-Adresse bzw. SBUS-Kanal/-Modus je Gruppe)
+    if (jsonExtractInt(body, "ek_gadr0", v)) {
+      v = (v == 255) ? 255 : constrain(v, 0, 20);
+      if (v != EK_Gruppen_Adresse[0]) { EK_Gruppen_Adresse[0] = v; changed = true; }
+    }
+    if (jsonExtractInt(body, "ek_gadr1", v)) {
+      v = (v == 255) ? 255 : constrain(v, 0, 20);
+      if (v != EK_Gruppen_Adresse[1]) { EK_Gruppen_Adresse[1] = v; changed = true; }
+    }
+    if (jsonExtractInt(body, "sbus_gch0", v)) {
+      v = (v == 999) ? 999 : constrain(v, 0, 15);
+      if (v != SBUS_Gruppen_Channel[0]) { SBUS_Gruppen_Channel[0] = v; changed = true; }
+    }
+    if (jsonExtractInt(body, "sbus_gch1", v)) {
+      v = (v == 999) ? 999 : constrain(v, 0, 15);
+      if (v != SBUS_Gruppen_Channel[1]) { SBUS_Gruppen_Channel[1] = v; changed = true; }
+    }
+    if (jsonExtractInt(body, "sbus_gmode0", v)) {
+      bool valid = (v == 0 || (v >= 10 && v <= 13));
+      if (valid && v != SBUS_Gruppen_Mode[0]) { SBUS_Gruppen_Mode[0] = v; changed = true; }
+    }
+    if (jsonExtractInt(body, "sbus_gmode1", v)) {
+      bool valid = (v == 0 || (v >= 10 && v <= 13));
+      if (valid && v != SBUS_Gruppen_Mode[1]) { SBUS_Gruppen_Mode[1] = v; changed = true; }
+    }
 
     // NEU v2.00: WLAN-Auto-Failsafe
     bool bv = false;
@@ -1065,6 +1301,10 @@ static void handleConfig() {
     if (jsonExtractInt(body, "wifi_auto_timeout", v)) {
       v = constrain(v, 5, 240);
       if ((uint16_t)v != g_wifi_auto_timeout) { g_wifi_auto_timeout = (uint16_t)v; changed = true; }
+    }
+    // NEU v2.02: WLAN dauerhaft an
+    if (jsonExtractBool(body, "wifi_always_on", bv)) {
+      if (bv != g_wifi_always_on) { g_wifi_always_on = bv; changed = true; }
     }
 
     String s;
@@ -1149,7 +1389,7 @@ static void handleOutput() {
     bool changed = false;
     int val = 0;
     if (jsonExtractInt(body, "kanal", val)) {
-      if (val >= 0 && val <= 55 && val != Ausgang_Kanal[ch]) {
+      if (val >= 0 && val <= 95 && val != Ausgang_Kanal[ch]) {  // NEU V3.00: MKan bis 95
         Ausgang_Kanal[ch] = val;
         changed = true;
       }
@@ -1174,6 +1414,51 @@ static void handleOutput() {
         changed = true;
       }
     }
+
+    // NEU V3.10: Konfig 2 pro Ausgang (optional - 255 = "nicht verwendet")
+    if (jsonExtractInt(body, "kanal2", val)) {
+      if ((val == 255 || (val >= 0 && val <= 95)) && val != Ausgang_Kanal2[ch]) {
+        Ausgang_Kanal2[ch] = val;
+        changed = true;
+      }
+    }
+    if (jsonExtractInt(body, "pwm2", val)) {
+      bool validPwm = (val >= 0 && val <= 255) || (val >= 300 && val <= 315);
+      if (validPwm && val != pwm_wert2[ch]) {
+        pwm_wert2[ch] = val;
+        changed = true;
+      }
+    }
+    if (jsonExtractInt(body, "mode2", val)) {
+      val = constrain(val, 0, 0xFFFF);
+      if (val != mode2[ch]) {
+        mode2[ch] = val;
+        changed = true;
+      }
+    }
+
+    // NEU V3.10: Konfig 3 pro Ausgang (optional - 255 = "nicht verwendet")
+    if (jsonExtractInt(body, "kanal3", val)) {
+      if ((val == 255 || (val >= 0 && val <= 95)) && val != Ausgang_Kanal3[ch]) {
+        Ausgang_Kanal3[ch] = val;
+        changed = true;
+      }
+    }
+    if (jsonExtractInt(body, "pwm3", val)) {
+      bool validPwm = (val >= 0 && val <= 255) || (val >= 300 && val <= 315);
+      if (validPwm && val != pwm_wert3[ch]) {
+        pwm_wert3[ch] = val;
+        changed = true;
+      }
+    }
+    if (jsonExtractInt(body, "mode3", val)) {
+      val = constrain(val, 0, 0xFFFF);
+      if (val != mode3[ch]) {
+        mode3[ch] = val;
+        changed = true;
+      }
+    }
+
     String nm;
     if (jsonExtractString(body, "name", nm)) {
       nm = nm.substring(0, 16);
@@ -1362,7 +1647,12 @@ void webui_init() {
     // ausschliesslich webui_enableAP().
     WiFi.mode(WIFI_AP);
 
-    if (!digitalRead(WifiPin)) {
+    // NEU v2.02: WLAN dauerhaft an (g_wifi_always_on) uebersteuert den
+    // GPIO13-Bootpin vollstaendig - siehe Kommentar bei g_wifi_always_on
+    // in der .ino. Default AN, siehe Migrations-Default in nvsLoad().
+    if (g_wifi_always_on) {
+        webui_enableAP();
+    } else if (!digitalRead(WifiPin)) {
         webui_enableAP();
     }
     webServer.on("/",            HTTP_GET,  []{ webServer.send_P(200,"text/html",WEBUI_HTML); });
